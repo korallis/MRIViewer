@@ -14,6 +14,7 @@ uniform int u_mode;         // 0=MIP 1=DVR 2=ISO
 uniform float u_isoThreshold;
 uniform float u_quality;    // 1 = ~1 voxel/step; <1 = coarser (interaction)
 uniform float u_invert;
+uniform float u_opacity;    // global DVR opacity scale (0..1)
 
 flat in vec3 v_eyeTex;
 in vec3 v_posTex;
@@ -103,7 +104,7 @@ void main() {
       if (w > 0.003) {
         vec4 c = lut(w);
         // Opacity correction keeps appearance stable across step sizes.
-        float a = 1.0 - pow(1.0 - c.a, 1.0 / u_quality);
+        float a = 1.0 - pow(1.0 - c.a * u_opacity, 1.0 / u_quality);
         acc.rgb += (1.0 - acc.a) * a * c.rgb;
         acc.a += (1.0 - acc.a) * a;
         if (acc.a >= 0.95) break;

@@ -4,6 +4,8 @@ import type { Vec3 } from '../dicom/types';
 
 export type Stage = 'idle' | 'ingesting' | 'browsing' | 'loading' | 'viewing';
 export type RenderMode = 0 | 1 | 2; // 0=MIP 1=DVR 2=ISO
+export type Orientation = 'axial' | 'sagittal' | 'coronal';
+export type CameraKind = Orientation | 'front' | 'side' | 'top' | 'reset';
 
 export interface CandidateSummary {
   key: string;
@@ -51,10 +53,20 @@ interface ViewerState {
   metadataOpen: boolean;
   clipOpen: boolean;
   captureNonce: number;
+  // Prototype-style controls
+  orientation: Orientation;
+  opacity: number; // DVR global opacity scale (0.15..1)
+  contrast: number; // window-width contrast factor (0.6..1.8)
+  cine: boolean;
+  cameraCmd: { kind: CameraKind; nonce: number };
+  toast: string;
+  toastNonce: number;
   errors: string[];
   announce: string;
   set: (partial: Partial<ViewerState>) => void;
   pushError: (message: string) => void;
+  showToast: (toast: string) => void;
+  camera: (kind: CameraKind) => void;
 }
 
 export const useViewer = create<ViewerState>()(
@@ -81,9 +93,18 @@ export const useViewer = create<ViewerState>()(
     metadataOpen: false,
     clipOpen: false,
     captureNonce: 0,
+    orientation: 'axial',
+    opacity: 0.85,
+    contrast: 1,
+    cine: false,
+    cameraCmd: { kind: 'reset', nonce: 0 },
+    toast: '',
+    toastNonce: 0,
     errors: [],
     announce: '',
     set: (partial) => set(partial),
     pushError: (message) => set((s) => ({ errors: [...s.errors.slice(-4), message], announce: message })),
+    showToast: (toast) => set((s) => ({ toast, toastNonce: s.toastNonce + 1, announce: toast })),
+    camera: (kind) => set((s) => ({ cameraCmd: { kind, nonce: s.cameraCmd.nonce + 1 } })),
   })),
 );

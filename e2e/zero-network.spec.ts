@@ -21,7 +21,7 @@ test('makes zero requests to any non-local host', async ({ page }) => {
   await page.waitForFunction(() => '__mriIngest' in window);
   await ingestFixture(page, 'phantom-axial');
   await page.getByTestId('series-card').first().click();
-  await expect(page.getByRole('toolbar', { name: 'Viewer tools' })).toBeVisible();
+  await page.getByTestId('orient-axial').waitFor();
   await page.waitForTimeout(600);
 
   expect(violations, `External requests attempted:\n${violations.join('\n')}`).toEqual([]);
@@ -32,7 +32,7 @@ test('recovers from a simulated WebGL context loss', async ({ page }) => {
   await page.waitForFunction(() => '__mriIngest' in window);
   await ingestFixture(page, 'phantom-axial');
   await page.getByTestId('series-card').first().click();
-  await expect(page.getByRole('toolbar', { name: 'Viewer tools' })).toBeVisible();
+  await page.getByTestId('orient-axial').waitFor();
   await page.waitForTimeout(400);
 
   // Force context loss + restore via WEBGL_lose_context, then confirm the app
@@ -47,7 +47,7 @@ test('recovers from a simulated WebGL context loss', async ({ page }) => {
     await new Promise((r) => setTimeout(r, 400));
   });
   // App is still interactive after restore.
-  await expect(page.getByRole('toolbar', { name: 'Viewer tools' })).toBeVisible();
+  await page.getByTestId('orient-axial').waitFor();
   await page.getByRole('button', { name: 'MIP', exact: true }).click();
   await expect(page.getByRole('button', { name: 'MIP', exact: true })).toHaveClass(/active/);
 });

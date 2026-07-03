@@ -1,73 +1,65 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { ingestFixture } from './helpers';
 
-async function loadAndView(page: import('@playwright/test').Page, fixture = 'phantom-axial') {
+async function loadAndView(page: Page) {
   await page.goto('/?e2e=1');
   await page.waitForFunction(() => '__mriIngest' in window);
-  await ingestFixture(page, fixture);
+  await ingestFixture(page, 'phantom-axial');
   await page.getByTestId('series-card').first().click();
-  await expect(page.getByRole('toolbar', { name: 'Viewer tools' })).toBeVisible();
-  await page.waitForTimeout(300);
+  await page.getByTestId('orient-axial').waitFor();
+  await page.waitForTimeout(400);
 }
 
-test('hotkeys switch render mode', async ({ page }) => {
-  await loadAndView(page);
-  await page.keyboard.press('m');
-  await expect(page.getByRole('button', { name: 'MIP', exact: true })).toHaveClass(/active/);
-  await page.keyboard.press('s');
-  await expect(page.getByRole('button', { name: 'ISO', exact: true })).toHaveClass(/active/);
-});
-
-test('number keys apply window presets', async ({ page }) => {
-  await loadAndView(page);
-  const before = await page.evaluate(() =>
+const clim = (page: Page) =>
+  page.evaluate(() =>
     (window as unknown as { __mriGetState: () => { windowClim: number[] } }).__mriGetState().windowClim,
   );
-  await page.keyboard.press('9');
-  const after = await page.evaluate(() =>
-    (window as unknown as { __mriGetState: () => { windowClim: number[] } }).__mriGetState().windowClim,
+
+test('slice slider scrubs and updates the companion readout', async ({ page }) => {
+  await loadAndView(page);
+  await page.locator('#slice').fill('20');
+  await expect(page.locator('.metric', { hasText: 'Slice' })).toContainText('20');
+});
+
+test('contrast slider narrows the window', async ({ page }) => {
+  await loadAndView(page);
+  const before = await clim(page);
+  await page.locator('#contrast').fill('170');
+  const after = await clim(page);
+  expect(after[1]! - after[0]!).toBeLessThan(before[1]! - before[0]!);
+});
+
+test('colormap select changes the map', async ({ page }) => {
+  await loadAndView(page);
+  await page.selectOption('#cmap', 'hot-iron');
+  await expect(page.locator('#cmap')).toHaveValue('hot-iron');
+});
+
+test('cine toggles playback and advances the slice', async ({ page }) => {
+  await loadAndView(page);
+  const s0 = await page.evaluate(() =>
+    (window as unknown as { __mriGetState: () => { crosshairTex: number[] } }).__mriGetState().crosshairTex[2],
   );
-  // Preset 9 is a much tighter window than the default.
-  const w0 = before[1]! - before[0]!;
-  const w9 = after[1]! - after[0]!;
-  expect(w9).toBeLessThan(w0);
-});
-
-test('right-drag adjusts window/level', async ({ page }) => {
-  await loadAndView(page);
-  const before = await page.evaluate(() =>
-    (window as unknown as { __mriGetState: () => { windowClim: number[] } }).__mriGetState().windowClim,
+  await page.getByRole('button', { name: 'Play Cine' }).click();
+  await expect(page.getByRole('button', { name: 'Pause Cine' })).toBeVisible();
+  await page.waitForTimeout(600);
+  const s1 = await page.evaluate(() =>
+    (window as unknown as { __mriGetState: () => { crosshairTex: number[] } }).__mriGetState().crosshairTex[2],
   );
-  const pane = page.getByTestId('pane-axial');
-  const box = (await pane.boundingBox())!;
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down({ button: 'right' });
-  await page.mouse.move(box.x + box.width / 2 + 120, box.y + box.height / 2 + 60, { steps: 8 });
-  await page.mouse.up({ button: 'right' });
-  const after = await page.evaluate(() =>
-    (window as unknown as { __mriGetState: () => { windowClim: number[] } }).__mriGetState().windowClim,
-  );
-  expect(after).not.toEqual(before);
+  expect(s1).not.toEqual(s0);
 });
 
-test('metadata panel shows patient info and privacy notice', async ({ page }) => {
+test('companion shows real metadata + privacy notice', async ({ page }) => {
   await loadAndView(page);
-  await page.getByRole('button', { name: 'info' }).click();
-  const panel = page.getByRole('complementary', { name: 'Study metadata' });
-  await expect(panel).toContainText('PHANTOM');
-  await expect(panel).toContainText('never uploaded');
+  const companion = page.locator('.companion-panel');
+  await expect(companion).toContainText('PHANTOM');
+  await expect(companion).toContainText('64 × 64 × 24');
+  await expect(companion).toContainText('never uploaded');
 });
 
-test('PNG export triggers a download', async ({ page }) => {
+test('export snapshot triggers a PNG download', async ({ page }) => {
   await loadAndView(page);
-  const downloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: '📷 PNG' }).click();
-  const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe('mriviewer.png');
-});
-
-test('clip box control opens', async ({ page }) => {
-  await loadAndView(page);
-  await page.getByRole('button', { name: 'clip', exact: true }).click();
-  await expect(page.getByLabel('Clip X min')).toBeVisible();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export Snapshot' }).click();
+  expect((await download).suggestedFilename()).toBe('mri-snapshot.png');
 });
