@@ -33,9 +33,10 @@ jobs:
           fi
       - name: Nested-path serve smoke test
         run: |
+          # Confirm the relative-base build (base:'./') loads from a sub-path.
           mkdir -p /tmp/nest/sub && cp -r dist /tmp/nest/sub/app
-          (cd /tmp/nest && npx -y serve -l 8788 &) && sleep 2
-          curl -sf http://localhost:8788/sub/app/index.html | grep -q '<div id="root">'
+          (cd /tmp/nest && python3 -m http.server 8790 &) && sleep 2
+          curl -sf http://localhost:8790/sub/app/index.html | grep -q '<div id="root">'
       - name: Install Playwright
         run: npx playwright install --with-deps chromium
       - run: npm run e2e
