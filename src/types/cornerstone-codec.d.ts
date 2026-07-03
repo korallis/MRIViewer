@@ -1,6 +1,5 @@
-// Ambient stub for the OPTIONAL @cornerstonejs/dicom-codec dependency. The
-// package is not installed in this build; the codec registry imports it
-// dynamically and degrades gracefully when absent (see workers/codecs/registry.ts).
+// Ambient types for @cornerstonejs/dicom-codec. The package currently ships
+// CommonJS source without TypeScript declarations.
 declare module '@cornerstonejs/dicom-codec' {
   export function decode(
     bytes: Uint8Array,
@@ -12,5 +11,14 @@ declare module '@cornerstonejs/dicom-codec' {
       samplesPerPixel: number;
     },
     transferSyntaxUID: string,
-  ): Promise<{ pixelData: Uint8Array | Int16Array | Uint16Array }>;
+  ): Promise<{
+    imageFrame: Uint8Array | Int16Array | Uint16Array;
+    imageInfo: unknown;
+  }>;
+
+  export function getPixelData(
+    imageFrame: Uint8Array | Int16Array | Uint16Array,
+    imageInfo: unknown,
+    transferSyntaxUID: string,
+  ): Uint8Array | Int16Array | Uint16Array;
 }

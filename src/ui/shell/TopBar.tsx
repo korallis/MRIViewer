@@ -4,6 +4,8 @@ import { getVolume } from '../../state/resources';
 export function TopBar() {
   const stage = useViewer((s) => s.stage);
   const aiEnabled = useViewer((s) => s.aiEnabled);
+  const viewMode = useViewer((s) => s.viewMode);
+  const renderMode = useViewer((s) => s.renderMode);
   const set = useViewer((s) => s.set);
   return (
     <header className="topbar">
@@ -11,7 +13,7 @@ export function TopBar() {
         <div className="logo" aria-hidden />
         <div>
           <h1>MRIViewer — Evidence Viewer</h1>
-          <p>Local DICOM · interactive 3D volume · orbit · slice · orientation</p>
+          <p>Local DICOM · interactive slices · orthogonal MRI stack</p>
         </div>
       </div>
       <div className="top-actions">
@@ -21,7 +23,7 @@ export function TopBar() {
         </span>
         {stage === 'viewing' && (
           <span className="pill" id="render-pill">
-            {renderName(useViewer.getState().renderMode)}
+            {viewMode === 'slices' ? 'Interactive slices' : renderName(renderMode)}
           </span>
         )}
         <button

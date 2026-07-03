@@ -18,7 +18,7 @@ const clim = (page: Page) =>
 test('slice slider scrubs and updates the companion readout', async ({ page }) => {
   await loadAndView(page);
   await page.locator('#slice').fill('20');
-  await expect(page.locator('.metric', { hasText: 'Slice' })).toContainText('20');
+  await expect(page.getByTestId('slice-metric')).toContainText('20');
 });
 
 test('contrast slider narrows the window', async ({ page }) => {

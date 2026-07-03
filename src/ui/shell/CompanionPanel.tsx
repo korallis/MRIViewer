@@ -5,6 +5,7 @@ import { AiCompanion } from './AiCompanion';
 
 export function CompanionPanel() {
   const orientation = useViewer((s) => s.orientation);
+  const viewMode = useViewer((s) => s.viewMode);
   const renderMode = useViewer((s) => s.renderMode);
   const crosshairTex = useViewer((s) => s.crosshairTex);
   const volumeVersion = useViewer((s) => s.volumeVersion);
@@ -41,9 +42,9 @@ export function CompanionPanel() {
       <div className="panel-body">
         <div className="metric-grid">
           <div className="metric"><span>Series</span><strong>{cap(orientation)}</strong></div>
-          <div className="metric"><span>Slice</span><strong>{v ? `${sliceIdx}/${dim - 1}` : '—'}</strong></div>
+          <div className="metric" data-testid="slice-metric"><span>Slice</span><strong>{v ? `${sliceIdx}/${dim - 1}` : '—'}</strong></div>
           <div className="metric"><span>Volume</span><strong>{v ? compact(voxels) : '—'}</strong></div>
-          <div className="metric"><span>Render</span><strong>{renderName(renderMode)}</strong></div>
+          <div className="metric"><span>View</span><strong>{viewMode === 'slices' ? 'Slices' : renderName(renderMode)}</strong></div>
         </div>
 
         {v ? (

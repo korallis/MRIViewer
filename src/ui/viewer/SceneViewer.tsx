@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
 import { shallow } from 'zustand/shallow';
 import raymarchVert from '../../render/shaders/raymarch.vert?raw';
@@ -173,7 +173,7 @@ function CameraDriver() {
   );
 }
 
-/** PNG export + cine slice advancement, driven from inside the canvas. */
+/** PNG export for the WebGL volume canvas. Cine is driven by ViewerShell state. */
 function FrameDriver() {
   const gl = useThree((s) => s.gl);
   const invalidate = useThree((s) => s.invalidate);
@@ -195,25 +195,5 @@ function FrameDriver() {
     });
     return () => cancelAnimationFrame(id);
   }, [captureNonce, gl, invalidate]);
-
-  // Cine: advance the current orientation's slice on a wall-clock cadence and
-  // keep requesting frames (demand mode).
-  const acc = useRef(0);
-  useFrame((_, delta) => {
-    const s = useViewer.getState();
-    if (!s.cine) return;
-    acc.current += delta;
-    if (acc.current >= 0.06) {
-      acc.current = 0;
-      const entry = getVolume();
-      if (!entry) return;
-      const axis = s.orientation === 'axial' ? 2 : s.orientation === 'sagittal' ? 0 : 1;
-      const dim = entry.volume.dims[axis];
-      const next = [...s.crosshairTex] as [number, number, number];
-      next[axis] = (next[axis] + 1 / dim) % 1;
-      s.set({ crosshairTex: next });
-    }
-    invalidate();
-  });
   return null;
 }

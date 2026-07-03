@@ -10,32 +10,20 @@ MRIViewer decodes DICOM pixel data entirely in the browser, in Web Workers, with
 | Deflated Explicit VR LE | `1.2.840.10008.1.2.1.99` | ✅ | pako inflate |
 | RLE Lossless | `1.2.840.10008.1.2.5` | ✅ | pure-JS (`src/workers/codecs/rle.ts`) |
 | Enhanced (multi-frame) MR | SOP `…1.1.4.1` | ✅ | dcmjs functional-group expansion |
-| JPEG Baseline / Extended | `.4.50` / `.4.51` | 🔌 scaffolded | `@cornerstonejs/dicom-codec` (WASM, optional) |
-| JPEG Lossless / SV1 | `.4.57` / `.4.70` | 🔌 scaffolded | WASM |
-| JPEG-LS | `.4.80` / `.4.81` | 🔌 scaffolded | WASM (CharLS) |
-| JPEG 2000 | `.4.90` / `.4.91` | 🔌 scaffolded | WASM (OpenJPEG) |
-| HTJ2K | `.4.201` / `.4.202` / `.4.203` | 🔌 scaffolded | WASM (OpenJPH) |
+| JPEG Baseline / Extended | `.4.50` / `.4.51` | ✅ | `@cornerstonejs/dicom-codec` |
+| JPEG Lossless / SV1 | `.4.57` / `.4.70` | ✅ | `@cornerstonejs/dicom-codec` |
+| JPEG-LS | `.4.80` / `.4.81` | ✅ | `@cornerstonejs/dicom-codec` (CharLS) |
+| JPEG 2000 | `.4.90` / `.4.91` | ✅ | `@cornerstonejs/dicom-codec` (OpenJPEG) |
+| HTJ2K | `.4.201` / `.4.202` / `.4.203` | ✅ | `@cornerstonejs/dicom-codec` (OpenJPH) |
 
 `✅` decode paths are covered by unit tests against synthetic fixtures.
 
-## Enabling the JPEG-family WASM codecs
+## JPEG-family codecs
 
-The JPEG/JPEG2000/JPEG-LS/HTJ2K decoders are wired behind a lazy dynamic import
-in `src/workers/codecs/registry.ts` but the WASM package is an **optional
-dependency** (not bundled by default). To enable:
-
-```bash
-npm install @cornerstonejs/dicom-codec
-```
-
-Then ensure its `.wasm` assets are **self-hosted** (copied into the build output),
-never fetched from a CDN — the strict CSP (`connect-src 'self'`) and the CI
-zero-network test will otherwise fail. Configure Vite `assetsInclude` / a copy
-step for `node_modules/@cornerstonejs/dicom-codec/dist/*.wasm`, and the worker
-will detect and activate them on startup via `initCodecs()`.
-
-Until then, unsupported-encoding series are shown in the series browser with a
-clear badge and are not selectable — no silent failure.
+JPEG/JPEG2000/JPEG-LS/HTJ2K decoders are loaded lazily from
+`@cornerstonejs/dicom-codec` the first time a compressed file is decoded. The
+package is a normal dependency so real-world JPEG 2000 spine MRI discs are
+selectable in the series browser instead of being marked unsupported.
 
 > ⚠️ HTJ2K UIDs are `1.2.840.10008.1.2.4.201/.202/.203`. The upstream
 > `@cornerstonejs/dicom-codec` README lists a typo'd `1.2.840.10008.1.2.202`;

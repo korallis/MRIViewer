@@ -9,6 +9,7 @@ export function BottomControls() {
   const opacity = useViewer((s) => s.opacity);
   const contrast = useViewer((s) => s.contrast);
   const colormap = useViewer((s) => s.colormap);
+  const viewMode = useViewer((s) => s.viewMode);
   const renderMode = useViewer((s) => s.renderMode);
   const crosshairTex = useViewer((s) => s.crosshairTex);
   const set = useViewer((s) => s.set);
@@ -48,12 +49,6 @@ export function BottomControls() {
           <span className="value">{sliceIdx}</span>
         </div>
         <div className="control-grid">
-          <label htmlFor="opacity">Opacity</label>
-          <input id="opacity" type="range" min={15} max={100} value={Math.round(opacity * 100)}
-            onChange={(e) => set({ opacity: Number(e.target.value) / 100 })} />
-          <span className="value">{Math.round(opacity * 100)}%</span>
-        </div>
-        <div className="control-grid">
           <label htmlFor="contrast">Contrast</label>
           <input id="contrast" type="range" min={60} max={180} value={Math.round(contrast * 100)}
             onChange={(e) => applyContrast(Number(e.target.value) / 100)} />
@@ -69,16 +64,27 @@ export function BottomControls() {
       </div>
 
       <div className="control-box">
-        <h3>Interaction</h3>
+        <h3>Display</h3>
         <div className="mini-actions">
-          <button className={renderMode === 1 ? 'active' : ''} onClick={() => set({ renderMode: 1 })}>DVR</button>
-          <button className={renderMode === 0 ? 'active' : ''} onClick={() => set({ renderMode: 0 })}>MIP</button>
-          <button className={renderMode === 2 ? 'active' : ''} onClick={() => set({ renderMode: 2 })}>ISO</button>
+          <button className={viewMode === 'slices' ? 'active' : ''} onClick={() => set({ viewMode: 'slices' })}>Slices</button>
+          <button className={viewMode === 'volume' ? 'active' : ''} onClick={() => set({ viewMode: 'volume' })}>3D</button>
+        </div>
+        <div className="control-grid compact" style={{ marginTop: 9 }}>
+          <label htmlFor="opacity">Opacity</label>
+          <input id="opacity" type="range" min={15} max={100} value={Math.round(opacity * 100)}
+            disabled={viewMode !== 'volume'}
+            onChange={(e) => set({ opacity: Number(e.target.value) / 100 })} />
+          <span className="value">{Math.round(opacity * 100)}%</span>
+        </div>
+        <div className="mini-actions">
+          <button disabled={viewMode !== 'volume'} className={renderMode === 1 ? 'active' : ''} onClick={() => set({ renderMode: 1 })}>DVR</button>
+          <button disabled={viewMode !== 'volume'} className={renderMode === 0 ? 'active' : ''} onClick={() => set({ renderMode: 0 })}>MIP</button>
+          <button disabled={viewMode !== 'volume'} className={renderMode === 2 ? 'active' : ''} onClick={() => set({ renderMode: 2 })}>ISO</button>
         </div>
         <div className="mini-actions" style={{ marginTop: 8 }}>
-          <button onClick={() => camera('front')}>Front</button>
-          <button onClick={() => camera('side')}>Side</button>
-          <button onClick={() => camera('top')}>Top</button>
+          <button disabled={viewMode !== 'volume'} onClick={() => camera('front')}>Front</button>
+          <button disabled={viewMode !== 'volume'} onClick={() => camera('side')}>Side</button>
+          <button disabled={viewMode !== 'volume'} onClick={() => camera('top')}>Top</button>
           <button onClick={() => set({ invert: !useViewer.getState().invert })}>Invert</button>
         </div>
       </div>
@@ -127,7 +133,7 @@ function Thumb({ orientation, label }: { orientation: 'axial' | 'sagittal' | 'co
 
   return (
     <div className="thumb" style={{ outline: activeOrientation === orientation ? '1px solid var(--accent)' : 'none' }}>
-      <canvas ref={ref} onClick={() => set({ orientation })} style={{ cursor: 'pointer' }} />
+      <canvas ref={ref} onClick={() => set({ orientation, viewMode: 'slices' })} style={{ cursor: 'pointer' }} />
       <div className="thumb-label"><strong>{label}</strong><span>{idx}</span></div>
     </div>
   );

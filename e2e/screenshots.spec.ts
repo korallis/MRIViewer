@@ -20,9 +20,10 @@ test('capture redesigned app', async ({ page }) => {
   await page.getByTestId('series-card').first().click();
   await page.getByTestId('orient-axial').waitFor();
   await page.waitForTimeout(900);
-  await page.screenshot({ path: `${OUT}/r03-viewer-dvr.png` });
+  await page.screenshot({ path: `${OUT}/r03-viewer-slices.png` });
 
   // Hot-iron ISO + a sagittal orientation.
+  await page.locator('.viewer-header').getByRole('button', { name: '3D', exact: true }).click();
   await page.selectOption('#cmap', 'hot-iron');
   await page.getByRole('button', { name: 'ISO', exact: true }).click();
   await page.getByTestId('orient-sagittal').click();

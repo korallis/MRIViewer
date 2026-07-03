@@ -4,6 +4,7 @@ import type { Vec3 } from '../dicom/types';
 
 export type Stage = 'idle' | 'ingesting' | 'browsing' | 'loading' | 'viewing';
 export type RenderMode = 0 | 1 | 2; // 0=MIP 1=DVR 2=ISO
+export type ViewMode = 'slices' | 'volume';
 export type Orientation = 'axial' | 'sagittal' | 'coronal';
 export type CameraKind = Orientation | 'front' | 'side' | 'top' | 'reset';
 
@@ -37,6 +38,7 @@ interface ViewerState {
   /** Bumped whenever resources.getVolume() changes — components key off it. */
   volumeVersion: number;
   windowClim: [number, number];
+  viewMode: ViewMode;
   renderMode: RenderMode;
   isoThreshold: number;
   colormap: string;
@@ -79,6 +81,7 @@ export const useViewer = create<ViewerState>()(
     selectedKey: null,
     volumeVersion: 0,
     windowClim: [0, 1],
+    viewMode: 'slices',
     renderMode: 1,
     isoThreshold: 0.35,
     colormap: 'gray',

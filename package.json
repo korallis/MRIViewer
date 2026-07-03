@@ -1,6 +1,6 @@
 {
   "name": "mriviewer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Open-source, local-only web app for viewing MRI DICOM studies as interactive 3D volume renders",
@@ -21,6 +21,7 @@
     "check": "npm run typecheck && npm run lint && npm run test"
   },
   "dependencies": {
+    "@cornerstonejs/dicom-codec": "^1.0.9",
     "@react-three/drei": "10.7.7",
     "@react-three/fiber": "9.6.1",
     "comlink": "4.4.2",

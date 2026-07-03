@@ -34,24 +34,13 @@ export function canDecode(ts: string): boolean {
     isUncompressed(ts) ||
     isDeflated(ts) ||
     ts === TransferSyntax.RLELossless ||
-    (WASM_SYNTAXES.has(ts) && wasmCodecAvailable())
+    WASM_SYNTAXES.has(ts)
   );
 }
 
-// The WASM codec package (@cornerstonejs/dicom-codec) is an OPTIONAL dependency.
-// This build does not vendor it, so JPEG-family syntaxes report as unsupported
-// (honest) rather than failing only at load time. To enable: install the package,
-// co-locate its WASM (see docs/CODECS.md), and set wasmProbe via initCodecs().
-let wasmProbe: 'unknown' | 'available' | 'absent' = 'unknown';
-function wasmCodecAvailable(): boolean {
-  return wasmProbe === 'available';
-}
-
-/** Probe the optional WASM codec once at worker startup. */
+/** Kept as a worker-startup hook; codecs are now bundled as a normal dependency. */
 export async function initCodecs(): Promise<void> {
-  if (wasmProbe !== 'unknown') return;
-  const mod = await loadWasmCodec();
-  wasmProbe = mod ? 'available' : 'absent';
+  await loadWasmCodec();
 }
 
 interface DicomCodecModule {
@@ -59,24 +48,34 @@ interface DicomCodecModule {
     bytes: Uint8Array,
     info: { rows: number; columns: number; bitsAllocated: number; signed: boolean; samplesPerPixel: number },
     ts: string,
-  ) => Promise<{ pixelData: Uint8Array | Int16Array | Uint16Array }>;
+  ) => Promise<{ imageFrame: Uint8Array | Int16Array | Uint16Array; imageInfo: unknown }>;
+  getPixelData?: (
+    imageFrame: Uint8Array | Int16Array | Uint16Array,
+    imageInfo: unknown,
+    transferSyntaxUID: string,
+  ) => Uint8Array | Int16Array | Uint16Array;
 }
 let codecModule: DicomCodecModule | null = null;
-async function loadWasmCodec(): Promise<DicomCodecModule | null> {
+function installWorkerWindowAlias(): void {
+  const g = globalThis as unknown as Record<string, unknown>;
+  if (g.window || !g.self) return;
+  // @cornerstonejs/dicom-codec's timer asks browser-or-node for `isBrowser`,
+  // which requires window.document, then reads window.performance. Dedicated
+  // workers expose performance on self but no window/document, so alias enough
+  // of self before the lazy import for the timer to work.
+  const workerGlobal = g.self as Record<string, unknown>;
+  workerGlobal.document ??= {};
+  g.window = workerGlobal;
+}
+
+async function loadWasmCodec(): Promise<DicomCodecModule> {
   if (codecModule) return codecModule;
-  try {
-    // Optional dependency. The specifier is assembled at runtime so Vite's
-    // import-analysis does not try to resolve a package that isn't installed
-    // (a static string errors the dev server even with @vite-ignore).
-    const pkg = ['@cornerstonejs', 'dicom-codec'].join('/');
-    const mod = (await import(/* @vite-ignore */ pkg)) as unknown as DicomCodecModule;
-    codecModule = mod;
-    wasmProbe = 'available';
-    return mod;
-  } catch {
-    wasmProbe = 'absent';
-    return null;
-  }
+  installWorkerWindowAlias();
+  const mod = (await import('@cornerstonejs/dicom-codec')) as unknown as
+    | DicomCodecModule
+    | { default: DicomCodecModule };
+  codecModule = 'default' in mod ? mod.default : mod;
+  return codecModule;
 }
 
 function reinterpret(
@@ -101,12 +100,13 @@ export async function decodeFrame(
   const dicomParserMod = (await import('dicom-parser')).default;
   const pixelDataElement = ds.elements.x7fe00010!;
   const bot = (pixelDataElement as { basicOffsetTable?: number[] }).basicOffsetTable;
-  // Empty Basic Offset Table → assume one fragment per frame (true for our RLE
-  // and typical single-frame encapsulated series).
+  const fragments = (pixelDataElement as { fragments?: unknown[] }).fragments ?? [];
+  // Empty Basic Offset Table: for classic single-frame compressed DICOM, all
+  // fragments belong to the frame. This is safer than assuming one fragment.
   const encoded = (
     bot && bot.length > 0
       ? dicomParserMod.readEncapsulatedImageFrame(ds, pixelDataElement, frameIndex)
-      : dicomParserMod.readEncapsulatedPixelDataFromFragments(ds, pixelDataElement, frameIndex)
+      : dicomParserMod.readEncapsulatedPixelDataFromFragments(ds, pixelDataElement, 0, fragments.length)
   ) as Uint8Array;
 
   if (meta.transferSyntaxUID === TransferSyntax.RLELossless) {
@@ -116,7 +116,6 @@ export async function decodeFrame(
 
   if (WASM_SYNTAXES.has(meta.transferSyntaxUID)) {
     const mod = await loadWasmCodec();
-    if (!mod) throw new UnsupportedTransferSyntaxError(meta.transferSyntaxUID);
     const result = await mod.decode(
       encoded,
       {
@@ -128,7 +127,9 @@ export async function decodeFrame(
       },
       meta.transferSyntaxUID,
     );
-    const pd = result.pixelData;
+    const pd = mod.getPixelData
+      ? mod.getPixelData(result.imageFrame, result.imageInfo, meta.transferSyntaxUID)
+      : result.imageFrame;
     if (pd instanceof Uint8Array) return reinterpret(pd, meta);
     return pd;
   }
