@@ -38,7 +38,7 @@ async function regionBrightness(
       const buf = new Uint8Array(w * h * 4);
       gl.readPixels(px0, py0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
       let sum = 0;
-      for (let i = 0; i < buf.length; i += 4) sum += buf[i] + buf[i + 1] + buf[i + 2];
+      for (let i = 0; i < buf.length; i += 4) sum += buf[i]! + buf[i + 1]! + buf[i + 2]!;
       return sum / (w * h * 3);
     },
     { testId, region },
@@ -55,17 +55,23 @@ test('MIP renders non-empty pixels', async ({ page }) => {
 
 test('ORIENTATION: marker is in the correct axial quadrant (anti-mirroring)', async ({ page }) => {
   await loadAndView(page, 'phantom-axial');
-  await page.getByRole('button', { name: 'MIP', exact: true }).click();
+  // The bright marker sits at k≈18 (of 24). Scrub the axial slice onto it —
+  // sliceAxis for axial is k = texture axis 2.
+  await page.evaluate(() =>
+    (window as unknown as { __mriSetState: (p: unknown) => void }).__mriSetState({
+      crosshairTex: [0.5, 0.5, 18.5 / 24],
+    }),
+  );
   await page.waitForTimeout(400);
 
-  // Phantom marker is in the patient LEFT-ANTERIOR-SUPERIOR octant.
+  // Marker is in the patient LEFT-ANTERIOR-SUPERIOR octant.
   // Axial pane, radiological: patient Left → screen RIGHT, Anterior → screen TOP.
-  // So the marker must be in the TOP-RIGHT quadrant and NOT the top-left.
+  // The bright marker (value 3000 ≫ background) must dominate the TOP-RIGHT quadrant.
   const topRight = await regionBrightness(page, 'pane-axial', { x0: 0.55, y0: 0.05, x1: 0.95, y1: 0.45 });
   const topLeft = await regionBrightness(page, 'pane-axial', { x0: 0.05, y0: 0.05, x1: 0.45, y1: 0.45 });
-  const bottomRight = await regionBrightness(page, 'pane-axial', { x0: 0.55, y0: 0.55, x1: 0.95, y1: 0.95 });
+  const bottomLeft = await regionBrightness(page, 'pane-axial', { x0: 0.05, y0: 0.55, x1: 0.45, y1: 0.95 });
   expect(topRight).toBeGreaterThan(topLeft * 1.3);
-  expect(topRight).toBeGreaterThan(bottomRight * 1.3);
+  expect(topRight).toBeGreaterThan(bottomLeft * 1.3);
 });
 
 test('axial edge labels follow radiological convention', async ({ page }) => {

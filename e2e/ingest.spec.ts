@@ -3,6 +3,7 @@ import { ingestFixture, fixtureFiles } from './helpers';
 
 test('ingests a folder and lists a reconstructable series', async ({ page }) => {
   await page.goto('/?e2e=1');
+  await page.waitForFunction(() => '__mriIngest' in window);
   await ingestFixture(page, 'phantom-axial');
   const card = page.getByTestId('series-card').first();
   await expect(card).toBeVisible();
@@ -12,6 +13,7 @@ test('ingests a folder and lists a reconstructable series', async ({ page }) => 
 
 test('skips non-DICOM files and reports the count', async ({ page }) => {
   await page.goto('/?e2e=1');
+  await page.waitForFunction(() => '__mriIngest' in window);
   const files = fixtureFiles('phantom-axial');
   files.push({ name: 'notes.txt', bytes: Array.from(new TextEncoder().encode('not dicom'.repeat(40))) });
   await page.evaluate(
@@ -24,15 +26,17 @@ test('skips non-DICOM files and reports the count', async ({ page }) => {
 
 test('splits a dual-echo series into two candidates', async ({ page }) => {
   await page.goto('/?e2e=1');
+  await page.waitForFunction(() => '__mriIngest' in window);
   await ingestFixture(page, 'phantom-dual-echo');
   await expect(page.getByTestId('series-card')).toHaveCount(2);
 });
 
 test('empty / non-DICOM folder shows a helpful error', async ({ page }) => {
   await page.goto('/?e2e=1');
+  await page.waitForFunction(() => '__mriIngest' in window);
   await page.evaluate(
     (payload) => (window as unknown as { __mriIngest: (f: unknown) => Promise<void> }).__mriIngest(payload),
     [{ name: 'a.txt', bytes: Array.from(new TextEncoder().encode('x'.repeat(300))) }],
   );
-  await expect(page.getByText(/No DICOM files found/)).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: /No DICOM files found/ })).toBeVisible();
 });

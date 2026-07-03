@@ -14,6 +14,7 @@ export function fixtureFiles(name: string): Array<{ name: string; bytes: number[
 }
 
 export async function ingestFixture(page: Page, name: string): Promise<void> {
+  await page.waitForFunction(() => '__mriIngest' in window);
   const files = fixtureFiles(name);
   await page.evaluate(
     (payload) => (window as unknown as { __mriIngest: (f: unknown) => Promise<void> }).__mriIngest(payload),
