@@ -78,8 +78,27 @@ function QuadScene() {
   } | null>(null);
 
   const orbit = useRef<OrbitState>({ azimuth: 0.9, polar: 1.1, radius: 1, target: new THREE.Vector3() });
+  const [contextEpoch, setContextEpoch] = useState(0);
+
+  // WebGL context-loss recovery (PLAN §5.7): swallow the loss, rebuild GPU
+  // resources from the retained CPU-side volume on restore.
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const onLost = (e: Event) => {
+      e.preventDefault();
+      useViewer.getState().pushError('Graphics context lost — restoring…');
+    };
+    const onRestored = () => setContextEpoch((n) => n + 1);
+    canvas.addEventListener('webglcontextlost', onLost);
+    canvas.addEventListener('webglcontextrestored', onRestored);
+    return () => {
+      canvas.removeEventListener('webglcontextlost', onLost);
+      canvas.removeEventListener('webglcontextrestored', onRestored);
+    };
+  }, [gl]);
 
   useEffect(() => {
+    void contextEpoch; // rebuild GPU resources after a context restore
     const entry = getVolume();
     if (!entry) {
       setBuilt(null);
@@ -169,7 +188,7 @@ function QuadScene() {
         (sliceScenes[pane]!.children[0] as THREE.Mesh).geometry.dispose();
       }
     };
-  }, [volumeVersion, invalidate]);
+  }, [volumeVersion, contextEpoch, invalidate]);
 
   // React to uniform-affecting store changes.
   useEffect(
