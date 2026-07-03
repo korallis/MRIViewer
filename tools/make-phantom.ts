@@ -14,6 +14,7 @@ import dcmjs from 'dcmjs';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
+import { encodeRLEFrame } from '../src/workers/codecs/rle';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '..', 'fixtures');
 
@@ -269,6 +270,64 @@ function writeMultiframe(): void {
   console.log('wrote 1 file → fixtures/phantom-multiframe');
 }
 
+function writeRLE(): void {
+  const dir = join(FIXTURES, 'phantom-rle');
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  const { DicomDict, DicomMetaDictionary } = dcmjs.data;
+  const seriesUID = `${UID_ROOT}.5.2`;
+  for (let k = 0; k < NZ; k++) {
+    const pixels = sliceValues(k);
+    const fragment = encodeRLEFrame(pixels, 2);
+    // Encapsulated PixelData: empty Basic Offset Table + one fragment per frame.
+    const dataset: Record<string, unknown> = {
+      SOPClassUID: '1.2.840.10008.5.1.4.1.1.4',
+      SOPInstanceUID: `${UID_ROOT}.5.3.${k}`,
+      StudyInstanceUID: `${UID_ROOT}.1`,
+      SeriesInstanceUID: seriesUID,
+      Modality: 'MR',
+      PatientName: 'PHANTOM^MRIVIEWER',
+      PatientID: 'PHM001',
+      StudyDate: '20260703',
+      SeriesDescription: 'phantom RLE lossless',
+      ImageType: 'ORIGINAL\\PRIMARY',
+      InstanceNumber: NZ - k,
+      Rows: NY,
+      Columns: NX,
+      BitsAllocated: 16,
+      BitsStored: 16,
+      HighBit: 15,
+      PixelRepresentation: 0,
+      SamplesPerPixel: 1,
+      PhotometricInterpretation: 'MONOCHROME2',
+      PixelSpacing: [ROW_SP, COL_SP],
+      SliceThickness: 2.0,
+      ImageOrientationPatient: [1, 0, 0, 0, 1, 0],
+      ImagePositionPatient: [0, 0, k * Z_SP],
+      // One fragment for the single frame; dcmjs prepends the (empty) Basic
+      // Offset Table required for RLE.
+      PixelData: [fragment.buffer.slice(fragment.byteOffset, fragment.byteOffset + fragment.byteLength)],
+      _vrMap: { PixelData: 'OB' },
+    };
+    const meta: Record<string, unknown> = {
+      FileMetaInformationVersion: new Uint8Array([0, 1]).buffer,
+      MediaStorageSOPClassUID: dataset.SOPClassUID,
+      MediaStorageSOPInstanceUID: dataset.SOPInstanceUID,
+      TransferSyntaxUID: '1.2.840.10008.1.2.5',
+      ImplementationClassUID: `${UID_ROOT}.99`,
+      ImplementationVersionName: 'MRIVIEWER',
+    };
+    const dict = new DicomDict(DicomMetaDictionary.denaturalizeDataset(meta));
+    dict.dict = DicomMetaDictionary.denaturalizeDataset(dataset);
+    // RLE requires exactly one fragment per frame — disable auto-fragmentation.
+    writeFileSync(
+      join(dir, `rle_${String(k).padStart(3, '0')}.dcm`),
+      Buffer.from(dict.write({ fragmentMultiframe: false })),
+    );
+  }
+  console.log(`wrote ${NZ} files → fixtures/phantom-rle`);
+}
+
 mkdirSync(FIXTURES, { recursive: true });
 writeVariant({ name: 'phantom-axial', description: 'phantom axial explicit' });
 writeVariant({
@@ -306,4 +365,5 @@ writeVariant({
   transform: (v) => Math.round(v / 2) - 200, // range −200..1300, fits 12-bit signed
 });
 writeMultiframe();
+writeRLE();
 console.log('phantom generation complete');

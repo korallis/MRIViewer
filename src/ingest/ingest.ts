@@ -99,7 +99,12 @@ export async function ingestFiles(found: FoundFile[]): Promise<void> {
         if (done % 16 === 0 || done === found.length) {
           set({ progress: { done, total: found.length, label: 'Scanning files' } });
         }
-        if (r.ok) {
+        if (r.ok && 'multiframe' in r) {
+          for (const m of r.metas) {
+            metas.push(m);
+            files.set(m.sopInstanceUID, f.file); // all frames share one source file
+          }
+        } else if (r.ok) {
           metas.push(r.meta);
           files.set(r.meta.sopInstanceUID, f.file);
         } else if (r.reason === 'not-dicom') {
@@ -166,26 +171,49 @@ export async function loadSeries(key: string): Promise<void> {
   const parsed = new Map<string, ParsedSlice>();
   const failures: string[] = [];
   let done = 0;
-  await Promise.all(
-    candidate.slices.map((m) => {
+
+  // Multi-frame frames carry a '#' in their sopInstanceUID and share one source
+  // file — decode each such file ONCE, distributing all frames.
+  const classic = candidate.slices.filter((m) => !m.sopInstanceUID.includes('#'));
+  const multiframeFiles = new Map<string, File>();
+  for (const m of candidate.slices) {
+    if (!m.sopInstanceUID.includes('#')) continue;
+    const file = resources.getFile(m.sopInstanceUID);
+    if (file) multiframeFiles.set(file.name, file);
+  }
+
+  await Promise.all([
+    ...classic.map((m) => {
       const file = resources.getFile(m.sopInstanceUID);
       if (!file) {
         failures.push(`${m.fileName}: file handle lost`);
         return Promise.resolve();
       }
-      return pool
-        .parsePixels(file)
-        .then((r) => {
-          if (gen !== generation) return;
-          done++;
-          if (done % 8 === 0 || done === total) {
-            set({ progress: { done, total, label: 'Decoding pixel data' } });
-          }
-          if (r.ok) parsed.set(r.meta.sopInstanceUID, { meta: r.meta, pixels: r.pixels });
-          else failures.push(`${r.fileName}: ${r.detail ?? r.reason}`);
-        });
+      return pool.parsePixels(file).then((r) => {
+        if (gen !== generation) return;
+        done++;
+        if (done % 8 === 0 || done === total) {
+          set({ progress: { done, total, label: 'Decoding pixel data' } });
+        }
+        if (r.ok) parsed.set(r.meta.sopInstanceUID, { meta: r.meta, pixels: r.pixels });
+        else failures.push(`${r.fileName}: ${r.detail ?? r.reason}`);
+      });
     }),
-  );
+    ...[...multiframeFiles.values()].map((file) =>
+      pool.parseMultiframe(file).then((r) => {
+        if (gen !== generation) return;
+        if (r.ok) {
+          for (const fr of r.frames) {
+            parsed.set(fr.meta.sopInstanceUID, { meta: fr.meta, pixels: fr.pixels });
+            done++;
+          }
+          set({ progress: { done, total, label: 'Decoding pixel data' } });
+        } else {
+          failures.push(`${r.fileName}: ${r.detail ?? r.reason}`);
+        }
+      }),
+    ),
+  ]);
   if (gen !== generation) return;
 
   if (failures.length > 0) {

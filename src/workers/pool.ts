@@ -1,5 +1,10 @@
 import * as Comlink from 'comlink';
 import type { IngestWorkerApi, MetaResult, PixelResult } from './ingest.worker';
+import type { SliceMeta } from '../dicom/types';
+
+export type MultiframeResult =
+  | { ok: true; frames: Array<{ meta: SliceMeta; pixels: Int16Array | Uint16Array | Uint8Array }> }
+  | { ok: false; fileName: string; reason: 'error'; detail?: string };
 
 interface Slot {
   api: Comlink.Remote<IngestWorkerApi>;
@@ -60,6 +65,10 @@ export class IngestPool {
 
   parsePixels(file: File): Promise<PixelResult> {
     return this.run((api) => api.parsePixels(file) as unknown as Promise<PixelResult>);
+  }
+
+  parseMultiframe(file: File): Promise<MultiframeResult> {
+    return this.run((api) => api.parseMultiframe(file) as unknown as Promise<MultiframeResult>);
   }
 
   clearQueue(): void {

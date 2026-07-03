@@ -1,11 +1,13 @@
 /// <reference lib="webworker" />
 import * as Comlink from 'comlink';
 import { extractMeta, isDicom, parseDataSet, parseSlice, UnsupportedTransferSyntaxError } from '../dicom/parse';
+import { isMultiframe, parseMultiframe } from '../dicom/multiframe';
 import type { SliceMeta } from '../dicom/types';
-import { decodeFrame, canDecode } from './codecs/registry';
+import { decodeFrame, canDecode, initCodecs } from './codecs/registry';
 
 export type MetaResult =
   | { ok: true; meta: SliceMeta }
+  | { ok: true; multiframe: true; metas: SliceMeta[] }
   | { ok: false; fileName: string; reason: 'not-dicom' | 'error'; detail?: string };
 
 export type PixelResult =
@@ -19,7 +21,32 @@ const api = {
       const bytes = new Uint8Array(await file.arrayBuffer());
       if (!isDicom(bytes)) return { ok: false, fileName: file.name, reason: 'not-dicom' };
       const ds = parseDataSet(bytes);
-      return { ok: true, meta: extractMeta(ds, file.name) };
+      const meta = extractMeta(ds, file.name);
+      if (meta.numberOfFrames > 1 && isMultiframe(bytes)) {
+        const slices = parseMultiframe(bytes, file.name);
+        return { ok: true, multiframe: true, metas: slices.map((s) => s.meta) };
+      }
+      return { ok: true, meta };
+    } catch (err) {
+      return {
+        ok: false,
+        fileName: file.name,
+        reason: 'error',
+        detail: err instanceof Error ? err.message : String(err),
+      };
+    }
+  },
+
+  /** Decode all frames of a multi-frame file into transferable pixel arrays. */
+  async parseMultiframe(file: File): Promise<
+    | { ok: true; frames: Array<{ meta: SliceMeta; pixels: Int16Array | Uint16Array | Uint8Array }> }
+    | { ok: false; fileName: string; reason: 'error'; detail?: string }
+  > {
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const slices = parseMultiframe(bytes, file.name);
+      const transfers = slices.map((s) => s.pixels.buffer);
+      return Comlink.transfer({ ok: true as const, frames: slices }, transfers);
     } catch (err) {
       return {
         ok: false,
@@ -61,3 +88,6 @@ const api = {
 
 export type IngestWorkerApi = typeof api;
 Comlink.expose(api);
+
+// Probe the optional WASM codec once so canDecode() reflects real capability.
+void initCodecs();

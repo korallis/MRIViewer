@@ -3,6 +3,9 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDicom, parseSlice } from './parse';
+import { decodeRLE, encodeRLEFrame } from '../workers/codecs/rle';
+import { decodeFrame } from '../workers/codecs/registry';
+import { isMultiframe, parseMultiframe } from './multiframe';
 import { groupIntoCandidates } from './series';
 import { assembleVolume } from './assemble';
 import { applyMat4, invertAffine, lpsToRas } from './affine';
@@ -25,7 +28,7 @@ async function loadDir(name: string): Promise<ParsedSlice[]> {
   for (const f of readdirSync(dir)) {
     const bytes = new Uint8Array(readFileSync(join(dir, f)));
     if (!isDicom(bytes)) continue;
-    out.push(await parseSlice(bytes, f));
+    out.push(await parseSlice(bytes, f, { decodeFrame }));
   }
   return out;
 }
@@ -166,6 +169,53 @@ describe('intensity pipeline', () => {
     const [lo, hi] = robustRange(data, 0, 10000);
     expect(lo).toBeGreaterThanOrEqual(0);
     expect(hi).toBeLessThan(10000);
+  });
+});
+
+describe('RLE lossless codec (PLAN §5.6)', () => {
+  it('round-trips 16-bit pixel data through encode/decode', () => {
+    const pixels = new Uint16Array(64 * 64);
+    for (let i = 0; i < pixels.length; i++) pixels[i] = (i * 7) % 4096;
+    const frame = encodeRLEFrame(pixels, 2);
+    const raw = decodeRLE(frame, 64, 64, 16);
+    const back = new Uint16Array(raw.buffer, raw.byteOffset, pixels.length);
+    for (let i = 0; i < pixels.length; i += 37) expect(back[i]).toBe(pixels[i]);
+  });
+
+  it('decodes an RLE-encapsulated series into the classic volume', async () => {
+    const parsed = await loadDir('phantom-rle');
+    expect(parsed).toHaveLength(NZ);
+    expect(parsed[0]!.meta.transferSyntaxUID).toBe('1.2.840.10008.1.2.5');
+    const byUID = new Map(parsed.map((p) => [p.meta.sopInstanceUID, p]));
+    const rleVol = assembleVolume(groupIntoCandidates(parsed.map((p) => p.meta))[0]!, byUID);
+    const [classic] = await assembleDir('phantom-axial');
+    expect(rleVol.dims).toEqual(classic!.dims);
+    for (let n = 0; n < classic!.data.length; n += 811) {
+      expect(rleVol.data[n]).toBeCloseTo(classic!.data[n]!, 5);
+    }
+  });
+});
+
+describe('enhanced multi-frame (PLAN §5 / D7)', () => {
+  it('expands one multiframe file into the same volume as the classic series', async () => {
+    const bytes = new Uint8Array(readFileSync(join(FIXTURES, 'phantom-multiframe', 'enhanced.dcm')));
+    expect(isMultiframe(bytes)).toBe(true);
+    const frames = parseMultiframe(bytes, 'enhanced.dcm');
+    expect(frames).toHaveLength(NZ);
+
+    const byUID = new Map(frames.map((p) => [p.meta.sopInstanceUID, p]));
+    const candidates = groupIntoCandidates(frames.map((p) => p.meta));
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]!.reconstructable).toBe(true);
+    const mfVol = assembleVolume(candidates[0]!, byUID);
+
+    const [classic] = await assembleDir('phantom-axial');
+    expect(mfVol.dims).toEqual(classic!.dims);
+    // Frames were stored in REVERSE order with reversed IPP — geometric sort must
+    // reproduce the classic volume voxelwise.
+    for (let n = 0; n < classic!.data.length; n += 811) {
+      expect(mfVol.data[n]).toBeCloseTo(classic!.data[n]!, 5);
+    }
   });
 });
 
