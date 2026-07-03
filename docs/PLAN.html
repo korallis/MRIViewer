@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="night">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MRIViewer — Implementation Plan</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex) > * { min-width: 0; }
+  :where(p, h1, h2, h3, h4, h5, h6, li, dd, blockquote, figcaption, td, th, .badge, .label) { overflow-wrap: anywhere; }
+  :where(img, svg, video, canvas, iframe) { max-width: 100%; height: auto; }
+  .mermaid svg { max-width: 100%; }
+  section[id] { scroll-margin-top: 4.5rem; }
+  .pane-mock { border: 1px solid var(--color-base-content); border-opacity: .1; }
+  code.tag { font-size: .78rem; }
+</style>
+</head>
+<body class="bg-base-100 text-base-content">
+
+<!-- ===================== NAV ===================== -->
+<div class="navbar bg-base-200 sticky top-0 z-50 shadow-md text-sm">
+  <div class="flex-1 px-2 font-bold">🧠 MRIViewer Plan</div>
+  <div class="flex-none hidden lg:flex gap-1">
+    <a href="#decisions" class="btn btn-ghost btn-xs">Decisions</a>
+    <a href="#architecture" class="btn btn-ghost btn-xs">Architecture</a>
+    <a href="#stack" class="btn btn-ghost btn-xs">Stack</a>
+    <a href="#pipeline" class="btn btn-ghost btn-xs">Pipeline</a>
+    <a href="#coords" class="btn btn-ghost btn-xs">Coordinates</a>
+    <a href="#rendering" class="btn btn-ghost btn-xs">Rendering</a>
+    <a href="#ux" class="btn btn-ghost btn-xs">UX</a>
+    <a href="#privacy" class="btn btn-ghost btn-xs">Privacy</a>
+    <a href="#testing" class="btn btn-ghost btn-xs">Testing</a>
+    <a href="#phases" class="btn btn-ghost btn-xs">Phases</a>
+    <a href="#risks" class="btn btn-ghost btn-xs">Risks</a>
+    <a href="#pitfalls" class="btn btn-ghost btn-xs">Pitfalls</a>
+  </div>
+</div>
+
+<main class="max-w-6xl mx-auto px-4 lg:px-8 py-8 space-y-14">
+
+<!-- ===================== HERO ===================== -->
+<section class="space-y-4">
+  <h1 class="text-4xl font-black tracking-tight">MRIViewer — Implementation Plan</h1>
+  <p class="text-lg opacity-80 max-w-3xl">An open-source, <b>strictly local</b> web app: drop a folder of MRI DICOM files, get a fully interactive, GPU-raymarched 3D volume with linked MPR slice views. Built on <b>React Three Fiber</b> over WebGL2. Zero network calls at runtime — imaging data never leaves the machine.</p>
+  <div class="flex flex-wrap gap-2">
+    <span class="badge badge-primary">React Three Fiber 9.6</span>
+    <span class="badge badge-secondary">three r185 · WebGL2</span>
+    <span class="badge badge-accent">dicom-parser + WASM codecs</span>
+    <span class="badge badge-info">Vite 8 · TypeScript strict</span>
+    <span class="badge badge-success">MIT · local-only</span>
+  </div>
+  <div role="alert" class="alert alert-info alert-soft">
+    <span><b>Written for agentic execution (Claude Code, ultracode).</b> Every decision below is locked with rationale; every phase has objective acceptance criteria and verification commands. Provenance: 13 research agents across 6 topics; <b>122 load-bearing claims adversarially fact-checked</b> against npm, GitHub source, MDN, Khronos and DICOM PS3.x on 2026-07-03. Version pins are registry-verified, not from memory.</span>
+  </div>
+  <div class="stats stats-vertical sm:stats-horizontal shadow w-full">
+    <div class="stat"><div class="stat-title">Repository</div><div class="stat-value text-lg">korallis/MRIViewer</div><div class="stat-desc">MIT · public</div></div>
+    <div class="stat"><div class="stat-title">Phases</div><div class="stat-value text-lg">0 – 7</div><div class="stat-desc">each independently verifiable</div></div>
+    <div class="stat"><div class="stat-title">Runtime network calls</div><div class="stat-value text-lg">0</div><div class="stat-desc">CSP-enforced + CI-tested</div></div>
+    <div class="stat"><div class="stat-title">Target</div><div class="stat-value text-lg">Desktop</div><div class="stat-desc">Chrome / Edge / Firefox, WebGL2</div></div>
+  </div>
+</section>
+
+<!-- ===================== GOAL ===================== -->
+<section id="goal" class="space-y-4">
+  <h2 class="text-2xl font-bold border-b border-base-300 pb-2">1 · Goal, scope, non-goals</h2>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="card card-border bg-base-200"><div class="card-body">
+      <h3 class="card-title text-success text-base">In scope (v1)</h3>
+      <ul class="list-disc ml-5 space-y-1 text-sm">
+        <li>Folder ingest: drag-and-drop and folder picker; hundreds to ~2000 files; multiple studies/series per folder with a series browser.</li>
+        <li>Classic single-frame MR series → 3D volume; Enhanced (multi-frame) MR in Phase 5.</li>
+        <li>Compressed transfer syntaxes via self-hosted WASM codecs (JPEG Lossless, JPEG-LS, JPEG 2000, RLE, HTJ2K, deflated).</li>
+        <li>3D view: raymarched DVR with editable transfer function, MIP, shaded ISO; perspective + orthographic; clip box; orientation labels &amp; gizmo.</li>
+        <li>MPR: axial/sagittal/coronal panes with linked crosshairs, wheel scrub, thick-slab MIP — all sampling one shared 3D texture.</li>
+        <li>Window/level (radiology mouse conventions), percentile auto-window, colormaps, PNG export, metadata panel, hotkeys.</li>
+        <li>Hard local-only guarantee: strict CSP, zero-network CI test, all assets bundled.</li>
+      </ul>
+    </div></div>
+    <div class="card card-border bg-base-200"><div class="card-body">
+      <h3 class="card-title text-error text-base">Non-goals (v1)</h3>
+      <ul class="list-disc ml-5 space-y-1 text-sm">
+        <li>No diagnosis: ship a visible <b>“not a medical device — not for diagnostic use”</b> disclaimer.</li>
+        <li>No DICOMweb/PACS networking, no server component, no accounts, no telemetry — ever.</li>
+        <li>No segmentation, registration, fusion, or quantitative maps (ADC scaling via Philips private tags explicitly out).</li>
+        <li>No mobile/Safari support (folder ingest is impractical there); documented as desktop-only.</li>
+        <li>No WebGPU (R3F v10 is alpha-only); architecture avoids deep coupling to ease later migration.</li>
+        <li>No PWA/service worker and no OPFS persistence by default (PHI-on-disk trade-off; see <a class="link" href="#privacy">Privacy</a>).</li>
+      </ul>
+    </div></div>
+  </div>
+  <p class="text-sm opacity-70">Naming note: EPAM’s dormant-ish <code>epam/mriviewer</code> (“MRI Viewer”, Apache-2.0) already exists. We keep the name — different org, different stack — but the README should say “not affiliated with EPAM MRI Viewer” for discoverability.</p>
+</section>
+
+<!-- ===================== DECISIONS ===================== -->
+<section id="decisions" class="space-y-4">
+  <h2 class="text-2xl font-bold border-b border-base-300 pb-2">2 · Locked decisions</h2>
+  <p class="text-sm opacity-80">Research surfaced three plausible ingestion stacks and two renderer strategies; these are now <b>resolved</b>. An implementing agent must not re-litigate them.</p>
+  <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-200">
+    <table class="table table-zebra table-sm">
+      <thead><tr><th>#</th><th>Decision</th><th>Choice</th><th>Rejected alternative &amp; why</th></tr></thead>
+      <tbody>
+        <tr><td>D1</td><td>DICOM ingestion</td><td><b>Hand-rolled pipeline</b>: <code>dicom-parser</code> for classic files, <code>dcmjs</code> only on the Enhanced multi-frame path, <code>@cornerstonejs/dicom-codec</code> WASM decoders keyed by TransferSyntaxUID, all in a worker pool.</td><td><code>@itk-wasm/dicom</code> (GDCM one-call) and dcm2niix-WASM both work, but hide the geometry math this educational project exists to expose, lose tag-level metadata, and add MB-scale WASM. <b>itk-wasm is kept as a dev-only test oracle</b> (D-T3).</td></tr>
+        <tr><td>D2</td><td>Renderer</td><td><b>Hand-rolled GLSL raymarcher</b> (Will Usher ray setup + ideas from three.js <code>VolumeShader.js</code>): MIP + ISO + DVR with 1D LUT transfer function, in-shader clipping, jittered starts.</td><td>Forking <code>VolumeRenderShader1</code> verbatim: released versions are ortho-only, lack DVR/TF/clipping. No reusable “R3F medical volume” library exists — confirmed gap.</td></tr>
+        <tr><td>D3</td><td>3D texture format</td><td><b>R16F</b>: normalize voxels to [0,1], upload <code>RedFormat + HalfFloatType</code> via <code>THREE.DataUtils.toHalfFloat</code>. Linear filtering is core WebGL2. ~11 bits mantissa covers 12-bit MRI.</td><td>R32F needs <code>OES_texture_float_linear</code> to filter; integer formats (R16UI) never filter. R8 is the automatic <i>fallback</i> when a volume exceeds the 256 MB texture budget.</td></tr>
+        <tr><td>D4</td><td>Volume upload</td><td><b>Assemble-then-upload</b> in v1 (one Data3DTexture creation).</td><td>Cornerstone-style progressive per-slice <code>texSubImage3D</code> streaming is the Phase 7 optimization, not v1 complexity.</td></tr>
+        <tr><td>D5</td><td>Camera &amp; controls</td><td><b>Perspective default, orthographic toggle</b> (our own ray setup handles both), drei <code>OrbitControls</code> with <code>camera.up = +Z</code> so patient-superior stays up.</td><td>Trackball/Arcball free-tumbling loses anatomical orientation; hot-swapping control types corrupts the up-vector.</td></tr>
+        <tr><td>D6</td><td>Coordinate system</td><td><b>World = RAS, Z-up.</b> Build voxel→LPS affine from IPP/IOP/PixelSpacing, then <code>worldFromLPS = diag(-1,-1,1)</code>. Full spec in <a class="link" href="#coords">§6</a>.</td><td>Implicit axis-aligned assumptions — the #1 silent-mirroring bug class in this domain.</td></tr>
+        <tr><td>D7</td><td>Enhanced multi-frame MR</td><td><b>Detect from day one, reject with a clear message until Phase 5</b>, then full support (Philips + Siemens XA exports make it non-optional).</td><td>Silent mis-parse of functional groups, or blocking v1 on it.</td></tr>
+        <tr><td>D8</td><td>Lossy syntaxes (.4.50/.51, .4.91)</td><td><b>Decode</b> (libjpeg-turbo / OpenJPEG codecs) and show a persistent “lossy source data” banner.</td><td>Rejecting them fails on the most common patient CD/USB exports.</td></tr>
+        <tr><td>D9</td><td>State</td><td><b>zustand, two-tier</b>: reactive slice = small serializable metadata; voxel arrays/textures live in a module-level resource registry, reached via refs. Transient subscriptions mutate uniforms + <code>invalidate()</code>.</td><td>Volume data in React state re-renders the world; setState in useFrame/pointer events is a documented R3F anti-pattern.</td></tr>
+        <tr><td>D10</td><td>MPR layout</td><td><b>One canvas + drei <code>&lt;View&gt;</code> quad</b> (<code>frames={1}</code>): four scissored viewports share one GL context → the 3D texture uploads once.</td><td>Four <code>&lt;Canvas&gt;</code> elements = 4× texture memory, browser context caps, Safari unmount leaks.</td></tr>
+        <tr><td>D11</td><td>Concurrency infra</td><td><b>Plain workers + comlink + transferable ArrayBuffers</b>. No SharedArrayBuffer, so no COOP/COEP headers — <code>npx serve dist</code> works untouched.</td><td>SAB gains nothing for embarrassingly-parallel per-file parsing and poisons the “serve from anywhere” story.</td></tr>
+        <tr><td>D12</td><td>Distribution</td><td><b>Vite 8, <code>base:'./'</code></b>, run via <code>npm run dev</code> or <code>npx serve dist</code>. Document clearly: <code>file://</code> cannot work (ESM is blocked on the file protocol — maintainer-confirmed).</td><td>PWA/service-worker adds update semantics for zero benefit on localhost; plugin ecosystem is mid-transition.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ===================== ARCHITECTURE ===================== -->
+<section id="architecture" class="space-y-4">
+  <h2 class="text-2xl font-bold border-b border-base-300 pb-2">3 · Architecture</h2>
+  <p class="text-sm opacity-80">How a dropped folder becomes pixels, and which thread owns what:</p>
+  <div class="card card-border bg-base-200"><div class="card-body overflow-x-auto">
+    <pre class="mermaid">
+flowchart TB
+  subgraph MAIN["Main thread (React + R3F)"]
+    DROP["Folder drop / picker<br>dual-path traversal"]
+    STORE["zustand store<br>(metadata only)"]
+    RES["Resource registry<br>(TypedArrays, Data3DTexture)"]
+    CANVAS["&lt;Canvas frameloop='demand' flat linear&gt;"]
+    V3D["3D View<br>raymarch material"]
+    MPR["MPR Views ×3<br>slice materials"]
+  end
+  subgraph POOL["Worker pool · N = ⌊cores/2⌋ · comlink"]
+    SNIFF["DICM magic sniff<br>@ byte 128"]
+    PARSE["dicom-parser<br>tag extraction"]
+    CODEC["WASM codecs (lazy)<br>charls · openjpeg · turbo · rle"]
+    MF["dcmjs path<br>Enhanced multi-frame"]
+  end
+  DROP -->|"File[] (structured clone, lazy)"| POOL
+  SNIFF --> PARSE --> CODEC
+  PARSE --> MF
+  POOL -->|"pixel ArrayBuffers (transferred, zero-copy)"| ASM
+  subgraph ASM["Volume assembly (main, off-render)"]
+    GROUP["Group: StudyUID → SeriesUID<br>split by IOP + 4D tags"]
+    SORT["Geometric sort<br>dot(normal, IPP)"]
+    VAL["Validate: spacing, shear,<br>duplicates, texture limits"]
+    NORM["Rescale → sign-extend →<br>percentile normalize [0,1]"]
+  end
+  GROUP --> SORT --> VAL --> NORM
+  NORM -->|"Float16 voxels + RAS affine"| RES
+  RES --> CANVAS
+  CANVAS --> V3D
+  CANVAS --> MPR
+  STORE -.->|"transient subs → uniforms + invalidate()"| V3D
+  STORE -.-> MPR
+    </pre>
+  </div></div>
+  <h3 class="font-bold mt-2">Repository layout</h3>
+  <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-200 p-4">
+<pre class="text-xs leading-5"><code>MRIViewer/
+├─ src/
+│  ├─ dicom/          # PURE TypeScript, no DOM/three imports — unit-testable in Node
+│  │   parse.ts tags.ts series.ts sort.ts validate.ts assemble.ts intensity.ts multiframe.ts types.ts
+│  ├─ workers/        # ingest.worker.ts, pool.ts, codecs/ (lazy WASM registry keyed by TS UID)
+│  ├─ volume/         # affine.ts (LPS→RAS), orientation.ts (A/P/L/R/S/I labels), histogram.ts, texture.ts
+│  ├─ render/         # VolumeMaterial.ts, SliceMaterial.ts, shaders/*.vert|frag (?raw imports), luts.ts
+│  ├─ ui/             # App.tsx, DropZone, SeriesBrowser, ViewportQuad, Toolbar, MetadataPanel, TFEditor
+│  ├─ state/          # store.ts (zustand + subscribeWithSelector), resources.ts (module-level registry)
+│  └─ main.tsx
+├─ tools/make-phantom.ts        # synthetic DICOM generator (dcmjs) — see §9
+├─ fixtures/                    # generated phantoms + vendored license-clean compressed samples
+├─ e2e/                         # Playwright: ingest, orientation, zero-network, screenshots
+├─ docs/  PLAN.html ARCHITECTURE.md COORDINATES.md
+├─ .github/workflows/ci.yml
+└─ index.html  vite.config.ts  tsconfig.json  package.json (+ committed lockfile)</code></pre>
+  </div>
+</section>
+
+<!-- ===================== STACK ===================== -->
+<section id="stack" class="space-y-4">
+  <h2 class="text-2xl font-bold border-b border-base-300 pb-2">4 · Stack — exact pins (registry-verified 2026-07-03)</h2>
+  <div role="alert" class="alert alert-warning alert-soft text-sm"><span><b>Pins are load-bearing.</b> fiber 9.x peer-requires <code>react &gt;=19 &lt;19.3</code> — React 19.3+ breaks install. Commit the lockfile; use exact versions (no <code>^</code>) for the react/three cluster. A fresh unpinned install months from now <i>will</i> violate this matrix.</span></div>
+  <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-200">
+    <table class="table table-zebra table-sm">
+      <thead><tr><th>Package</th><th>Version</th><th>License</th><th>Role / notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>react</code>, <code>react-dom</code></td><td><b>19.2.x</b> (must stay &lt;19.3)</td><td>MIT</td><td>fiber 9.5+ bundles the reconciler for 19.2 compat.</td></tr>
+        <tr><td><code>@react-three/fiber</code></td><td><b>9.6.1</b></td><td>MIT</td><td>v9.6 made material <code>uniforms</code> refs stable (merge semantics) — mutate via <code>matRef.current.uniforms.x.value</code>, never the memoized source object. Do not use v10 alpha.</td></tr>
+        <tr><td><code>@react-three/drei</code></td><td><b>10.7.7</b></td><td>MIT</td><td><code>shaderMaterial</code>, <code>OrbitControls</code>, <code>View</code>, <code>Html</code>, <code>GizmoHelper</code>, <code>useFBO</code>.</td></tr>
+        <tr><td><code>three</code></td><td><b>0.185.1</b> (r185)</td><td>MIT</td><td><code>Data3DTexture</code>, <code>DataUtils.toHalfFloat</code>; MIT reference shader at <code>three/addons/shaders/VolumeShader.js</code>; example renamed to <code>webgl_texture3d.html</code> at r165.</td></tr>
+        <tr><td><code>zustand</code></td><td><b>5.0.14</b></td><td>MIT</td><td>With <code>subscribeWithSelector</code>; it is also fiber’s own internal store.</td></tr>
+        <tr><td><code>dicom-parser</code></td><td><b>1.8.21</b></td><td>MIT</td><td>Frozen-stable since 2023-02 but still the parser inside Cornerstone’s loader 5.1.4 (2026-07). Zero deps, implicit+explicit VR, no dictionary needed.</td></tr>
+        <tr><td><code>dcmjs</code></td><td><b>0.52.0</b></td><td>MIT</td><td>Enhanced multi-frame path only (naturalized functional-group access). Lazy-chunked (~500 KB).</td></tr>
+        <tr><td><code>@cornerstonejs/dicom-codec</code></td><td><b>1.0.9</b></td><td><b>ISC</b> (not MIT — registry-verified)</td><td>One decode API keyed by TransferSyntaxUID; wraps charls/openjpeg/openjph/turbo/RLE. <b>Its README has an HTJ2K UID typo</b> — key dispatch on <code>1.2.840.10008.1.2.4.201/.202/.203</code>.</td></tr>
+        <tr><td><code>pako</code></td><td><b>2.1.0</b></td><td>MIT</td><td>Deflated Explicit VR (1.2.840.10008.1.2.1.99) inflates the <i>whole dataset</i>, pre-parse.</td></tr>
+        <tr><td><code>comlink</code></td><td><b>4.4.2</b></td><td>Apache-2.0</td><td>Worker RPC; buffers MUST go through <code>Comlink.transfer()</code> or they clone (documented OOM class).</td></tr>
+        <tr><td><code>vite</code></td><td><b>8.1.3</b></td><td>MIT</td><td>Node ^20.19 ∥ ≥22.12. <code>base:'./'</code>, <code>worker.format:'es'</code>, Rolldown bundler (<code>rolldownOptions</code>).</td></tr>
+        <tr><td>dev: <code>typescript</code> ~5.x, <code>vitest</code>, <code>@playwright/test</code>, <code>eslint</code>+<code>prettier</code></td><td>latest stable</td><td>—</td><td>tsconfig: <code>strict</code>, <code>noUncheckedIndexedAccess</code>, <code>moduleResolution:"bundler"</code>, <code>target:"ES2022"</code>.</td></tr>
+        <tr><td>dev: <code>@itk-wasm/dicom</code></td><td><b>7.6.4</b></td><td>Apache-2.0</td><td><b>Test oracle only</b> (never shipped): GDCM-grade series read to cross-check our assembler in Node tests.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="text-sm opacity-70">All runtime licenses are permissive (MIT/ISC/Apache-2.0). Generate <code>THIRD_PARTY_NOTICES</code> in Phase 7 (Apache-2.0 deps need NOTICE propagation; shader ideas from three.js (MIT) / NiiVue (BSD-2) need attribution comments).</p>
+</section>
+
+<!-- ===================== PIPELINE ===================== -->
+<section id="pipeline" class="space-y-4">
+  <h2 class="text-2xl font-bold border-b border-base-300 pb-2">5 · DICOM → volume pipeline (the correctness core)</h2>
+
+  <h3 class="font-bold">5.1 Folder ingest</h3>
+  <ul class="list-disc ml-5 text-sm space-y-1">
+    <li><b>Dual-path drop handler:</b> in the <code>drop</code> tick, <i>synchronously</i> map all <code>dataTransfer.items</code> → <code>getAsFileSystemHandle?.() ?? webkitGetAsEntry()</code>, <i>then</i> <code>Promise.all</code>. Any <code>await</code> before mapping makes later items resolve <code>null</code> (MDN-documented).</li>
+    <li><b><code>readEntries()</code> returns ≤100 entries per call in Chromium</b> — loop until an empty batch or large studies silently lose slices.</li>
+    <li>Fallback button: <code>&lt;input webkitdirectory multiple&gt;</code> (Baseline since 2025-08; all desktop browsers). Optional Chromium nicety: <code>showDirectoryPicker()</code> — feature-detect; Firefox/Safari have formally rejected it.</li>
+    <li>No <code>accept=</code> attribute, no extension filtering — DICOM files often have none. Identify by <code>"DICM"</code> magic at byte 128 in the worker; skip DICOMDIR, reports, secondary captures (filter SOPClassUID: keep MR Image Storage <code>1.2.840.10008.5.1.4.1.1.4</code> and Enhanced MR <code>…4.1</code>).</li>
+    <li>Normalize <code>entry.fullPath</code> (drop) vs <code>file.webkitRelativePath</code> (input) into one internal path scheme.</li>
+  </ul>
+
+  <h3 class="font-bold mt-4">5.2 Worker pool</h3>
+  <ul class="list-disc ml-5 text-sm space-y-1">
+    <li>Pool of <code>max(1, ⌊hardwareConcurrency/2⌋)</code> module workers (Cornerstone’s production default), created as <code>new Worker(new URL('./ingest.worker.ts', import.meta.url), {type:'module'})</code> — URL constructor literally inline or Vite won’t bundle it.</li>
+    <li>Post <code>File</code> objects in (structured-cloneable, lazy — bytes are read in the worker); <b>transfer</b> decoded pixel <code>ArrayBuffer</code>s back (zero-copy; cloning a 32 MB buffer ≈ 300 ms vs 6.6 ms transferred).</li>
+    <li>Per-file <code>try/catch</code> isolation: one malformed file never kills the ingest. Sanity-cap element lengths against file size to defeat allocation bombs from corrupt headers.</li>
+    <li>New folder drop cancels the in-flight ingest (generation counter; workers check and abandon stale jobs).</li>
+  </ul>
+
+  <h3 class="font-bold mt-4">5.3 Grouping &amp; splitting (a SeriesInstanceUID is not a volume)</h3>
+  <ol class="list-decimal ml-5 text-sm space-y-1">
+    <li>Group by <code>StudyInstanceUID</code> → <code>SeriesInstanceUID (0020,000E)</code>.</li>
+    <li>Split further by distinct <code>ImageOrientationPatient</code> (localizers/scouts mix orientations in one series).</li>
+    <li>Detect duplicate projected positions → split by 4D tags: <code>EchoNumbers (0018,0086)</code>, <code>TemporalPositionIdentifier</code>, <code>DiffusionBValue (0018,9087)</code>, <code>TriggerTime</code>, ImageType (magnitude/phase). One “volume candidate” per group; the series browser lists candidates.</li>
+  </ol>
+
+  <h3 class="font-bold mt-4">5.4 Geometric sort — the only correct ordering</h3>
+  <div id="code-sort" class="not-prose"></div>
+  <p class="text-sm opacity-80 mt-1">Never sort by <code>InstanceNumber</code>, <code>SliceLocation</code>, or filename — acquisition order is interleaved/descending/vendor-random (the InstanceNumber sort in ITK’s DCMTK reader is a documented scrambled-volume bug). This is the GDCM/nibabel/SPM/Clunie algorithm.</p>
+
+  <h3 class="font-bold mt-4">5.5 Validation gates (OHIF/Slicer-derived tolerances)</h3>
+  <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-200">
+    <table class="table table-sm table-zebra">
+      <thead><tr><th>Check</th><th>Tolerance</th><th>On failure</th></tr></thead>
+      <tbody>
+        <tr><td>&gt;1 slice, IPP present on every instance</td><td>—</td><td>Series not reconstructable → 2D-only badge in browser</td></tr>
+        <tr><td>IOP identical across slices</td><td>0.01 per component (OHIF)</td><td>Split by orientation (§5.3)</td></tr>
+        <tr><td>Uniform projected spacing</td><td>warn &gt;2% median deviation; refuse &gt;20% (OHIF)</td><td>Warn-banner / refuse with message; near-integer-multiple gaps → “missing slices” warning, render anyway</td></tr>
+        <tr><td>Shear: in-plane component of consecutive IPP deltas ≈ 0</td><td>1e-3 mm (Slicer)</td><td>“Irregular geometry” warning; render with caveat</td></tr>
+        <tr><td>Rows/Cols/slices vs <code>MAX_3D_TEXTURE_SIZE</code></td><td>query GL (≥2048 on 99.96% of WebGL2 devices)</td><td>Downsample in worker + warn</td></tr>
+        <tr><td>Volume bytes vs texture budget</td><td>256 MB (R16F)</td><td>Quantize to R8 (post-window) or downsample + warn</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="font-bold mt-4">5.6 Pixel &amp; intensity pipeline (MR has no Hounsfield units)</h3>
+  <ol class="list-decimal ml-5 text-sm space-y-1">
+    <li><b>Decode</b> per TransferSyntaxUID. Encapsulated frames: <code>readEncapsulatedImageFrame</code> + <code>createJPEGBasicOffsetTable</code> (fragments-per-frame is not 1:1). Uncompressed: view into the parse buffer using BitsAllocated/PixelRepresentation.</li>
+    <li><b>Sign-extend</b> when <code>PixelRepresentation=1</code> and BitsStored&lt;BitsAllocated (12-in-16 is common): <code>v = (raw &lt;&lt; (16-bits)) &gt;&gt; (16-bits)</code>. Mask above HighBit for unsigned legacy files. Wrong handling = salt-and-pepper wraparound in bright regions.</li>
+    <li><b>Rescale</b>: <code>v·RescaleSlope + RescaleIntercept</code> when present (defaults 1/0 — the GE/Siemens norm). Do <b>not</b> chase Philips private (2005,100E) scaling — viewer, not quantimetry.</li>
+    <li><b>MONOCHROME1</b> → invert.</li>
+    <li><b>Normalize per-volume</b> with robust percentiles (p0.5–p99.5 histogram clip, Slicer-style) → Float16 [0,1]. Seed initial window from <code>WindowCenter/Width (0028,1050/1051)</code> if present (may be multi-valued/per-slice/absent — first value, optional preset only).</li>
+    <li><b>PixelSpacing order trap</b>: <code>(0028,0030)</code> is <i>row spacing \ column spacing</i> (vertical first). Backslash-split multi-valued DS strings — never <code>parseFloat</code> the whole string.</li>
+    <li>After assembly, <b>drop all per-slice buffer references</b> (keep the cheap File handles for lossless re-parse) — raw buffers + volume + GPU copy can transiently triple memory.</li>
+  </ol>
+
+  <h3 class="font-bold mt-4">5.7 Error taxonomy (exact UX per failure class)</h3>
+  <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-200">
+    <table class="table table-sm table-zebra">
+      <thead><tr><th>Situation</th><th>Behavior</th></tr></thead>
+      <tbody>
+        <tr><td>Non-DICOM / junk file</td><td>Skip silently; count in post-ingest report (“214 DICOM, 3 skipped”)</td></tr>
+        <tr><td>Corrupt file / parser throw / allocation bomb</td><td>Worker catches per-file; file listed under “unreadable”; ingest continues</td></tr>
+        <tr><td>Unsupported transfer syntax</td><td>Series shown with “unsupported encoding: &lt;name&gt;” badge; not selectable</td></tr>
+        <tr><td>Zero DICOM in folder</td><td>Empty state: what was scanned, what to try</td></tr>
+        <tr><td>Multiple studies</td><td>Study picker layer above series browser</td></tr>
+        <tr><td>Enhanced multi-frame (pre-Phase-5)</td><td>“Enhanced MR not yet supported” badge with file count</td></tr>
+        <tr><td>WebGL2 unavailable</td><td>Full-screen capability message before any ingest UI</td></tr>
+        <tr><td>WebGL context lost</td><td><code>webglcontextlost</code>/<code>restored</code> handlers: preventDefault, toast, re-create texture from retained Float16 volume on restore</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ===================== COORDINATES ===================== -->
+<section id="coords" class="space-y-4">
+  <h2 class="text-2xl font-bold border-b border-base-300 pb-2">6 · Coordinate systems — the anti-mirroring spec</h2>
+  <div role="alert" class="alert alert-error alert-soft text-sm"><span><b>Highest-severity bug class in this project:</b> a left/right-mirrored brain renders 100% plausibly and passes every eyeball test. This section is normative; Phase 1 encodes it in tests against an asymmetric phantom.</span></div>
+  <div class="grid md:grid-cols-2 gap-4 text-sm">
+    <div class="card card-border bg-base-200"><div class="card-body space-y-2">
+      <h3 class="card-title text-base">Definitions</h3>
+      <ul class="list-disc ml-5 space-y-1">
+        <li><b>Patient space = DICOM LPS</b> (+X Left, +Y Posterior, +Z Superior), in mm.</li>
+        <li><b>Voxel→LPS affine</b> (Image Plane Module C.7.6.2): columns are <code>X̂ = row-cosines·colSpacing</code>, <code>Ŷ = col-cosines·rowSpacing</code>, <code>Ẑ = n̂·zSpacing</code> where <code>n̂ = row×col</code> and zSpacing = median consecutive projected-IPP delta; translation = IPP of the <b>first sorted</b> slice (center of first voxel).</li>
+        <li><b>World space = RAS, Z-up</b>: <code>worldFromLPS = diag(-1,-1,1)</code>. So world +X = patient Right, +Y = Anterior, +Z = Superior. Set <code>camera.up=(0,0,1)</code>.</li>
+        <li><b>Texture space</b>: UVW = voxel index / dimension; W increases with the sorted slice index (i.e. along +n̂). The mesh gets <code>modelMatrix = worldFromLPS · lpsFromVoxel · scale(1/dims)</code> so shader marching happens in unit-texture space with zero per-step transforms.</li>
+      </ul>
+    </div></div>
+    <div class="card card-border bg-base-200"><div class="card-body space-y-2">
+      <h3 class="card-title text-base">Consequences (each becomes a test)</h3>
+      <ul class="list-disc ml-5 space-y-1">
+        <li><b>Slice-stacking consistency:</b> sorting ascending by <code>dot(n̂, IPP)</code> with <code>n̂ = row×col</code> guarantees W and Ẑ agree — no mirror through the slice plane.</li>
+        <li><b>Orientation labels:</b> for each pane edge, take the edge’s world direction, find the dominant patient axis from the direction cosines, label A/P/L/R/S/I (threshold 0.5). Shown on all four edges of every MPR pane and as a 3D gizmo.</li>
+        <li><b>Radiological convention:</b> axial pane displays patient-left on screen-right by default (toggle to neurological).</li>
+        <li><b>Anisotropy:</b> mesh scaled by <code>(nx·sx, ny·sy, nz·sz)</code> mm — a 0.9×0.9×5 mm acquisition must render visibly slab-like, never cubified.</li>
+        <li><b>Measurements</b> transform endpoints through the affine to patient mm before Euclidean distance — never pixel-count × one spacing value.</li>
+      </ul>
+    </div></div>
+  </div>
+  <div role="alert" class="alert alert-warning alert-soft text-sm"><span><b>Color fidelity:</b> R3F’s Canvas defaults to ACES filmic tone mapping + sRGB output, which silently distorts grayscale ramps. Use <code>&lt;Canvas flat linear&gt;</code> (NoToneMapping, linear), keep the volume texture and LUT in linear space, and add a readback test asserting a known intensity maps to the exact LUT color.</span></div>
+</section>
+
+<!-- ===================== RENDERING ===================== -->
+<section id="rendering" class="space-y-4">
+  <h2 class="text-2xl font-bold border-b border-base-300 pb-2">7 · Rendering spec</h2>
+
+  <h3 class="font-bold">7.1 Texture setup</h3>
+  <ul class="list-disc ml-5 text-sm space-y-1">
+    <li><code>new THREE.Data3DTexture(halfFloatData, nx, ny, nz)</code>; <code>format=RedFormat</code>, <code>type=HalfFloatType</code> (→R16F), <b><code>minFilter=magFilter=LinearFilter</code></b> (defaults are Nearest — the #1 “blocky volume” bug), <code>generateMipmaps=false</code>, <code>unpackAlignment=1</code>, <code>needsUpdate=true</code>. Data = <code>Uint16Array</code> of half-float <i>bit patterns</i> via <code>DataUtils.toHalfFloat</code> — never raw integer intensities.</li>
+    <li>Box mesh rendered with <b><code>side: THREE.BackSide</code></b> so the camera can enter the volume; clamp <code>t.x = max(t.x, 0)</code> for the inside-the-box case.</li>
+  </ul>
+
+  <h3 class="font-bold mt-4">7.2 Raymarch fragment shader (per-mode contract)</h3>
+  <div id="code-shader" class="not-prose"></div>
+  <ul class="list-disc ml-5 text-sm space-y-1 mt-2">
+    <li><b>Precision:</b> <code>precision highp float; precision highp sampler3D;</code> — three’s reference uses mediump, which quantizes 16-bit data on some GPUs.</li>
+    <li><b>Step size:</b> <code>dt = min over axes of 1/(dims·|dir|)</code> × quality factor; loop cap ≈ <code>√3 × maxDim</code> (887 for 512³).</li>
+    <li><b>Jitter from day one:</b> offset ray start by a fraction of one step using interleaved-gradient-noise on <code>gl_FragCoord</code> — fixed-step marching without it produces wood-grain banding that adaptive stepping alone cannot fix.</li>
+    <li><b>MIP</b> must traverse the full ray (no early-out) + 4-substep refinement around the max. <b>DVR/ISO</b> early-terminate at α ≥ 0.95. <b>ISO</b>: threshold pre-test, half-step-back refinement, central-difference gradient (6 samples, only at the hit), Blinn-Phong, normal flipped toward viewer.</li>
+    <li><b>Transfer function:</b> 256×1 RGBA <code>DataTexture</code> LUT sampled at the window-normalized value <code>(v−clim.x)/(clim.y−clim.x)</code> with half-texel correction. Presets: gray, viridis, hot-iron. <code>u_clim</code> <i>is</i> window/level.</li>
+    <li><b>Clipping:</b> six-plane clip box applied <i>in-shader</i> by shrinking the ray’s [tmin,tmax] analytically — three’s <code>clippingPlanes</code> only clip the box surface, not the marched interior.</li>
+    <li><b>Interaction quality scaling:</b> on controls <code>start</code> → halve <code>dpr</code>/double dt; on <code>end</code> → restore + <code>invalidate()</code>. Early termination + skip-lighting-below-threshold for DVR.</li>
+  </ul>
+
+  <h3 class="font-bold mt-4">7.3 R3F integration rules</h3>
+  <div id="code-material" class="not-prose"></div>
+  <ul class="list-disc ml-5 text-sm space-y-1 mt-2">
+    <li><code>&lt;Canvas frameloop="demand" flat linear gl={{antialias:false, powerPreference:'high-performance'}}&gt;</code>. Every imperative mutation pairs with <code>invalidate()</code>; drei controls auto-invalidate.</li>
+    <li>Uniform updates: mutate <code>matRef.current.uniforms.X.value</code> (fiber ≥9.6 merges incoming uniforms props into a stable object — mutating your original object is dead code). Never setState in useFrame/pointermove; route fast values through zustand transient subscriptions.</li>
+    <li><b>Disposal:</b> textures living only in <code>material.uniforms</code> are invisible to R3F’s auto-dispose — on study swap call <code>texture.dispose()</code> in effect cleanup and assert <code>gl.info.memory.textures</code> returns to baseline (a dev-mode test). StrictMode double-mount makes non-idempotent texture creation double GPU memory in dev.</li>
+    <li>Suspense: parse is keyed by <code>suspend(parseStudy, [seriesKey])</code>; call <code>clear([seriesKey])</code> on close. Fallback inside Canvas must be <code>&lt;Html&gt;</code>, not DOM.</li>
+  </ul>
+
+  <h3 class="font-bold mt-4">7.4 MPR panes</h3>
+  <ul class="list-disc ml-5 text-sm space-y-1">
+    <li>Quad layout via drei <code>&lt;View frames={1}&gt;</code> ×4 over one absolutely-positioned fullscreen Canvas (<code>eventSource</code> = grid container). All views share the frameloop — acceptable; slice shaders are cheap.</li>
+    <li>Each 2D pane: orthographic camera + fullpane quad whose fragment shader samples the same <code>sampler3D</code> at a fixed texture coordinate along its axis; wheel scrubs the slice index; optional thick-slab MIP over N samples along the normal.</li>
+    <li>Linked crosshairs: one shared patient-mm point in zustand; panes project it via the affine; clicking any pane updates it (transient sub → uniforms → invalidate).</li>
+  </ul>
+</section>
+
+<!-- ===================== UX ===================== -->
+<section id="ux" class="space-y-4">
+  <h2 class="text-2xl font-bold border-b border-base-300 pb-2">8 · UX spec</h2>
+  <div class="mockup-window bg-base-300 border border-base-content/10">
+    <div class="bg-base-200 p-3">
+      <div class="flex gap-2 items-center text-xs mb-2 flex-wrap">
+        <span class="badge badge-primary badge-sm">MRIViewer</span>
+        <span class="badge badge-ghost badge-sm">Series: T1 MPRAGE SAG ▾</span>
+        <span class="badge badge-ghost badge-sm">DVR ▾</span>
+        <span class="badge badge-ghost badge-sm">gray ▾</span>
+        <span class="badge badge-ghost badge-sm">W/L: auto</span>
+        <span class="badge badge-ghost badge-sm">clip ⬚</span>
+        <span class="badge badge-ghost badge-sm">📷 PNG</span>
+        <span class="badge badge-success badge-sm ml-auto">● local only — nothing leaves this machine</span>
+      </div>
+      <div class="grid grid-cols-2 gap-1">
+        <div class="pane-mock bg-black/60 rounded aspect-video relative"><span class="absolute top-1 left-1 text-[10px] opacity-70">AXIAL · 87/176</span><span class="absolute top-1/2 left-1 text-[10px] opacity-50">R</span><span class="absolute top-1/2 right-1 text-[10px] opacity-50">L</span><span class="absolute left-1/2 top-1 text-[10px] opacity-50">A</span><span class="absolute left-1/2 bottom-1 text-[10px] opacity-50">P</span></div>
+        <div class="pane-mock bg-black/60 rounded aspect-video relative"><span class="absolute top-1 left-1 text-[10px] opacity-70">SAGITTAL · 120/256</span><span class="absolute top-1/2 left-1 text-[10px] opacity-50">A</span><span class="absolute top-1/2 right-1 text-[10px] opacity-50">P</span><span class="absolute left-1/2 top-1 text-[10px] opacity-50">S</span><span class="absolute left-1/2 bottom-1 text-[10px] opacity-50">I</span></div>
+        <div class="pane-mock bg-black/60 rounded aspect-video relative"><span class="absolute top-1 left-1 text-[10px] opacity-70">CORONAL · 130/256</span><span class="absolute top-1/2 left-1 text-[10px] opacity-50">R</span><span class="absolute top-1/2 right-1 text-[10px] opacity-50">L</span><span class="absolute left-1/2 top-1 text-[10px] opacity-50">S</span><span class="absolute left-1/2 bottom-1 text-[10px] opacity-50">I</span></div>
+        <div class="pane-mock bg-black/60 rounded aspect-video relative"><span class="absolute top-1 left-1 text-[10px] opacity-70">3D · DVR · perspective</span><span class="absolute bottom-1 right-1 text-[10px] opacity-50">⌾ gizmo</span></div>
+      </div>
+      <div class="text-[10px] opacity-60 mt-2">left panel: study/series browser with thumbnails · right panel: metadata (PHI notice), TF editor, clip sliders</div>
+    </div>
+  </div>
+
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="card card-border bg-base-200"><div class="card-body">
+      <h3 class="card-title text-base">Mouse (radiology conventions, verified against Cornerstone3D source)</h3>
+      <div class="overflow-x-auto"><table class="table table-xs table-zebra">
+        <tbody>
+          <tr><td>Left-drag</td><td>Window/level — <b>horizontal = width (contrast), vertical = center (brightness)</b>. Note: several docs state this reversed; the Cornerstone3D <code>WindowLevelTool</code> source is the authority.</td></tr>
+          <tr><td>Right-drag</td><td>Zoom</td></tr>
+          <tr><td>Middle-drag</td><td>Pan</td></tr>
+          <tr><td>Wheel</td><td>MPR: slice scrub · 3D: dolly</td></tr>
+          <tr><td>Left-drag (3D)</td><td>Orbit (W/L moves to a modifier or toolbar toggle in the 3D pane)</td></tr>
+        </tbody>
+      </table></div>
+    </div></div>
+    <div class="card card-border bg-base-200"><div class="card-body">
+      <h3 class="card-title text-base">Hotkeys (OHIF-v3-aligned defaults)</h3>
+      <div class="overflow-x-auto"><table class="table table-xs table-zebra">
+        <tbody>
+          <tr><td><kbd class="kbd kbd-xs">z</kbd></td><td>zoom tool</td><td><kbd class="kbd kbd-xs">i</kbd></td><td>invert</td></tr>
+          <tr><td><kbd class="kbd kbd-xs">v</kbd> / <kbd class="kbd kbd-xs">h</kbd></td><td>flip vert / horiz</td><td><kbd class="kbd kbd-xs">space</kbd></td><td>reset viewport</td></tr>
+          <tr><td><kbd class="kbd kbd-xs">↑</kbd>/<kbd class="kbd kbd-xs">↓</kbd></td><td>prev / next slice</td><td><kbd class="kbd kbd-xs">PgUp</kbd>/<kbd class="kbd kbd-xs">PgDn</kbd></td><td>prev / next series</td></tr>
+          <tr><td><kbd class="kbd kbd-xs">1–9</kbd></td><td colspan="3">percentile W/L presets (per-volume, never fixed CT-style numbers)</td></tr>
+          <tr><td><kbd class="kbd kbd-xs">m</kbd></td><td>MIP</td><td><kbd class="kbd kbd-xs">d</kbd> / <kbd class="kbd kbd-xs">s</kbd></td><td>DVR / ISO (+ threshold slider)</td></tr>
+        </tbody>
+      </table></div>
+    </div></div>
+  </div>
+  <ul class="list-disc ml-5 text-sm space-y-1">
+    <li><b>Series browser:</b> studies → series cards (description, count, dims, modality badge, mid-slice thumbnail rendered in-worker to a small canvas). Default selection heuristic: largest reconstructable non-derived MR series. Unsupported/2D-only series visibly badged, not hidden.</li>
+    <li><b>Metadata panel:</b> useful technical + identifying tags with a permanent notice: “Processed entirely on this machine. Never uploaded — verify in DevTools → Network.” (Chrome’s scary “Upload N files?” dialog for folder pickers makes this copy essential.)</li>
+    <li><b>Measurements (Phase 6):</b> length-in-mm on MPR panes first (affine-correct); 3D measurements need <code>gl_FragDepth</code> written at first-hit — deferred.</li>
+    <li><b>PNG export:</b> render to an offscreen <code>useFBO</code> target at fixed resolution and read back — avoids paying <code>preserveDrawingBuffer</code> permanently.</li>
+    <li><b>A11y baseline:</b> all sliders are real inputs with ARIA labels; slice scrub keyboard-operable; load progress + errors announced via a live region; honors <code>prefers-reduced-motion</code> (no idle auto-rotate); visible focus.</li>
+  </ul>
+</section>
+
+<!-- ===================== PRIVACY ===================== -->
+<section id="privacy" class="space-y-4">
+  <h2 class="text-2xl font-bold border-b border-base-300 pb-2">9 · Privacy &amp; local-only enforcement</h2>
+  <p class="text-sm opacity-80">“Local-only” is a <b>tested property</b>, not a README promise. Three independent layers:</p>
+  <div class="grid md:grid-cols-3 gap-4 text-sm">
+    <div class="card card-border bg-base-200"><div class="card-body">
+      <h3 class="card-title text-base">1 · Build-time</h3>
+      <p><code>base:'./'</code>, all fonts/assets bundled (system font stack), no CDN references. CI greps <code>dist/</code> for <code>https?://</code> and fails on any hit (sourcemap references excluded).</p>
+    </div></div>
+    <div class="card card-border bg-base-200"><div class="card-body">
+      <h3 class="card-title text-base">2 · Runtime CSP</h3>
+      <p>Production-only <code>&lt;meta http-equiv="Content-Security-Policy"&gt;</code> injected by a build-mode <code>transformIndexHtml</code> plugin (dev needs the HMR websocket).</p>
+    </div></div>
+    <div class="card card-border bg-base-200"><div class="card-body">
+      <h3 class="card-title text-base">3 · CI proof</h3>
+      <p>Playwright routes <code>**/*</code>, aborts + records any non-localhost request, ingests a fixture study, renders, asserts zero violations.</p>
+    </div></div>
+  </div>
+  <div id="code-csp" class="not-prose"></div>
+  <ul class="list-disc ml-5 text-sm space-y-1 mt-2">
+    <li><code>'wasm-unsafe-eval'</code> is required for the codec WASM; <code>worker-src 'self' blob:</code> because bundlers sometimes load workers from blob URLs. Meta-CSP can’t express <code>frame-ancestors</code> — note in SECURITY.md, don’t claim it.</li>
+    <li>PHI is real even locally: headers carry PatientName/ID/BirthDate/StudyDate/institution (PS3.15 Annex E is the de-identification reference if an anonymized-export feature lands later). No logging of header values; no persistence by default; OPFS caching only ever as explicit opt-in of the <i>derived</i> volume with a visible clear control — not in v1.</li>
+    <li>itk-wasm (dev oracle) and dicom-codec resolve WASM from CDNs <i>by default</i> — the app bundle must self-host all codec WASM (Vite asset handling + explicit URL config); the dist-grep catches regressions.</li>
+  </ul>
+</section>
+
+<!-- ===================== TESTING ===================== -->
+<section id="testing" class="space-y-4">
+  <h2 class="text-2xl font-bold border-b border-base-300 pb-2">10 · Test strategy — how an autonomous agent proves correctness</h2>
+  <div role="alert" class="alert alert-info alert-soft text-sm"><span><b>Keystone: the synthetic phantom generator</b> (<code>tools/make-phantom.ts</code>, dcmjs-based, committed fixtures). An asymmetric phantom — a bright marker in the patient <b>Left-Anterior-Superior</b> octant plus distinct X/Y/Z gradient ramps, anisotropic 1×1×2.5 mm spacing — makes orientation, mirroring, spacing and sorting <i>machine-checkable</i>. This single tool unblocks unit tests, e2e, the orientation guarantee, and the zero-network constraint (fixtures live in-repo).</span></div>
+  <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-200">
+    <table class="table table-sm table-zebra">
+      <thead><tr><th>Layer</th><th>Tooling</th><th>What it proves</th></tr></thead>
+      <tbody>
+        <tr><td>Unit (Node)</td><td>Vitest over <code>src/dicom</code> + <code>src/volume</code></td><td>Sort invariance under file shuffle; zSpacing from IPP (not SliceThickness) incl. gap/overlap cases; affine: voxel(0,0,0) center == first sorted IPP; splitting (orientation, dual-echo dup positions); sign-extension; MONOCHROME1; rescale; percentile windowing; multiframe frame-slicing (Phase 5).</td></tr>
+        <tr><td>Oracle (Node, dev-only)</td><td><code>@itk-wasm/dicom</code> readImageDicomFileSeries</td><td>Our assembled dims/spacing/direction/voxel checksums match GDCM’s within ε for every fixture — an independent implementation agreeing is the strongest anti-mirroring evidence available.</td></tr>
+        <tr><td>Fixture matrix</td><td>generated + vendored</td><td>Explicit VR LE, Implicit VR, Deflated, RLE, JPEG Lossless .70, JPEG-LS .80, J2K .90, lossy .50, Enhanced multiframe, oblique 30°, missing-slice, dup-position, MONOCHROME1, signed 12-in-16. Compressed variants vendored from license-clean public test sets (pydicom test data, documented per-file provenance) — every syntax decodes to the same checksum as its uncompressed twin.</td></tr>
+        <tr><td>E2E</td><td>Playwright, headless deterministic GL (<code>--use-angle=swiftshader</code>)</td><td>Ingest fixture folder → series browser; select → 3D render; <b>phantom marker appears in the correct screen octant</b> (pixel probe); MPR crosshair linking; W/L drag; study-swap leaves <code>gl.info.memory.textures</code> at baseline; zero-network suite (§9).</td></tr>
+        <tr><td>Visual regression</td><td>Playwright screenshots, per-mode</td><td>MIP/DVR/ISO golden images of the phantom under SwiftShader (deterministic); small SSIM tolerance.</td></tr>
+        <tr><td>CI (GitHub Actions)</td><td>ci.yml</td><td>typecheck → lint → unit → build → dist-grep → nested-path serve + worker smoke → e2e → bundle-size guard (&lt;800 KB gz initial; codecs/dcmjs lazy).</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3 class="font-bold">Performance budgets (measured, not vibes — in-app <code>?debug</code> FPS meter + performance marks)</h3>
+  <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-200">
+    <table class="table table-sm">
+      <tbody>
+        <tr><td>Time to first 3D frame, 300-slice uncompressed study</td><td><b>&lt; 5 s</b> (mid-range desktop GPU)</td></tr>
+        <tr><td>3D orbit interaction, 256³ R16F @ ~1440×900 pane</td><td><b>≥ 30 fps</b> (adaptive quality allowed) · MPR scrub <b>≥ 60 fps</b></td></tr>
+        <tr><td>Peak JS heap during ingest</td><td><b>&lt; 2×</b> raw pixel bytes (transfer + release discipline)</td></tr>
+        <tr><td>Main-thread long tasks during ingest</td><td><b>none &gt; 200 ms</b> (all parsing in workers)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ===================== PHASES ===================== -->
+<section id="phases" class="space-y-6">
+  <h2 class="text-2xl font-bold border-b border-base-300 pb-2">11 · Phase plan</h2>
+  <p class="text-sm opacity-80">Each phase is a mergeable milestone with objective exit criteria. <b>Agent protocol:</b> work one phase per session/branch; run the phase’s verification commands before declaring done; never bump the pinned react/three cluster; treat <a class="link" href="#pitfalls">§13</a> as a pre-commit checklist. Suggested ultracode shape noted per phase.</p>
+
+  <ul class="timeline timeline-vertical timeline-compact timeline-snap-icon">
+
+    <li>
+      <div class="timeline-middle">⚙️</div>
+      <div class="timeline-end w-full mb-6"><div class="card card-border bg-base-200"><div class="card-body py-4">
+        <h3 class="card-title text-base">Phase 0 — Scaffold &amp; guardrails</h3>
+        <p class="text-sm">Vite 8 + React 19.2 + TS strict scaffold; exact pins + lockfile; ESLint/Prettier; Vitest + Playwright wiring; GLSL <code>?raw</code> imports with <code>.d.ts</code> shim; <code>base:'./'</code>, <code>worker.format:'es'</code>; CSP build plugin (present, permissive until Phase 2); ci.yml with all gates incl. dist-grep and nested-path serve smoke; <code>.claude/launch.json</code> for dev preview; README run story + not-for-diagnostic-use disclaimer.</p>
+        <p class="text-xs"><b>Accept:</b> <code>npm ci &amp;&amp; npm run typecheck &amp;&amp; npm run lint &amp;&amp; npm test &amp;&amp; npm run build</code> green locally and in CI; dist-grep clean; app + worker load when dist/ is served from a nested sub-path.</p>
+        <p class="text-xs opacity-70"><b>Ultracode:</b> mostly solo/mechanical; one review agent over configs.</p>
+      </div></div></div>
+    </li>
+
+    <li>
+      <div class="timeline-middle">🧬</div>
+      <div class="timeline-end w-full mb-6"><div class="card card-border bg-base-200"><div class="card-body py-4">
+        <h3 class="card-title text-base">Phase 1 — dicom-core + phantom + oracle (pure TS, no UI)</h3>
+        <p class="text-sm">Implement <code>src/dicom</code> per §5: tag extraction (~20 tags), grouping/splitting, geometric sort, validation gates, affine build (§6), intensity pipeline. Build <code>tools/make-phantom.ts</code> and generate the fixture matrix (uncompressed variants). Wire the itk-wasm oracle test. Multiframe = detect-and-flag only.</p>
+        <p class="text-xs"><b>Accept:</b> all §10 unit tests green, including shuffle-invariance property test; oracle agreement within ε on every uncompressed fixture; coverage ≥90% on <code>src/dicom</code>.</p>
+        <p class="text-xs opacity-70"><b>Ultracode:</b> parallel implementers per module; adversarial verify panel on sort/affine/spacing math (the patient-safety code); dedicated agent authoring phantom + oracle tests from the spec, not from the implementation.</p>
+      </div></div></div>
+    </li>
+
+    <li>
+      <div class="timeline-middle">📂</div>
+      <div class="timeline-end w-full mb-6"><div class="card card-border bg-base-200"><div class="card-body py-4">
+        <h3 class="card-title text-base">Phase 2 — Ingestion UX + worker pool</h3>
+        <p class="text-sm">Dual-path drop + <code>webkitdirectory</code> + optional <code>showDirectoryPicker</code>; readEntries loop; comlink pool with transferables and generation-counter cancellation; progress UI; error taxonomy (§5.7); study/series browser with thumbnails; strict CSP goes live; “never uploaded” copy beside the picker.</p>
+        <p class="text-xs"><b>Accept:</b> e2e: drop 300-file fixture → correct series cards &lt; 3 s; shuffled/junk-salted folder → correct skip report; zero main-thread long tasks &gt; 200 ms; cancellation e2e (drop B mid-ingest of A).</p>
+        <p class="text-xs opacity-70"><b>Ultracode:</b> implementer + a browser-quirks reviewer (drop-tick sync rule, readEntries loop, Firefox callback path).</p>
+      </div></div></div>
+    </li>
+
+    <li>
+      <div class="timeline-middle">🧊</div>
+      <div class="timeline-end w-full mb-6"><div class="card card-border bg-base-200"><div class="card-body py-4">
+        <h3 class="card-title text-base">Phase 3 — 3D volume rendering</h3>
+        <p class="text-sm">Data3DTexture (D3), VolumeMaterial + raymarcher per §7 (MIP first, then DVR + ISO), <code>flat linear</code> Canvas, demand frameloop, OrbitControls Z-up, model matrix from affine, orientation gizmo + edge labels, percentile auto-window, colormap LUTs, jitter, interaction quality scaling, StrictMode-safe texture lifecycle + disposal.</p>
+        <p class="text-xs"><b>Accept:</b> e2e (SwiftShader): phantom marker in correct octant in all three modes; anisotropy visibly correct (bbox pixel ratio test); LUT readback exact (no tone mapping); texture count returns to baseline after study swap; orbit ≥30 fps budget on reference hardware (manual gate + FPS meter).</p>
+        <p class="text-xs opacity-70"><b>Ultracode:</b> judge panel on shader implementation (correctness / perf / license-cleanliness lenses); verify agent specifically hunting axis flips against COORDINATES.md.</p>
+      </div></div></div>
+    </li>
+
+    <li>
+      <div class="timeline-middle">🔲</div>
+      <div class="timeline-end w-full mb-6"><div class="card card-border bg-base-200"><div class="card-body py-4">
+        <h3 class="card-title text-base">Phase 4 — MPR quad + crosshairs</h3>
+        <p class="text-sm">drei View quad over one canvas; slice shaders sampling the shared texture; wheel scrub; linked crosshairs via shared patient-mm point; per-pane orientation labels; radiological/neurological toggle; shared W/L across panes; thick-slab MIP option.</p>
+        <p class="text-xs"><b>Accept:</b> crosshair click in axial moves sagittal/coronal to the same patient-mm point (store math unit test + e2e); labels match phantom geometry on every edge of every pane; single GL context asserted.</p>
+        <p class="text-xs opacity-70"><b>Ultracode:</b> implementer + geometry-verify agent replaying §6 consequences as checks.</p>
+      </div></div></div>
+    </li>
+
+    <li>
+      <div class="timeline-middle">🗜️</div>
+      <div class="timeline-end w-full mb-6"><div class="card card-border bg-base-200"><div class="card-body py-4">
+        <h3 class="card-title text-base">Phase 5 — Compressed syntaxes + Enhanced multi-frame</h3>
+        <p class="text-sm">dicom-codec integration with self-hosted lazy WASM chunks keyed by TS UID (HTJ2K = .4.201/.202/.203); pako for deflated; lossy decode + persistent banner (D8); dcmjs Enhanced-MR path (Shared/PerFrame functional groups, frame stride slicing, frame-level geometric sort, StackID/temporal splitting).</p>
+        <p class="text-xs"><b>Accept:</b> every compressed fixture decodes to the uncompressed twin’s checksum; Enhanced phantom ≡ classic phantom voxelwise; dist-grep still clean (no codec CDN leak); codecs load lazily (network-idle check on uncompressed-only ingest).</p>
+        <p class="text-xs opacity-70"><b>Ultracode:</b> per-codec parallel fixture verification; adversarial agent on multiframe tag-path handling (Philips vs Siemens XA samples).</p>
+      </div></div></div>
+    </li>
+
+    <li>
+      <div class="timeline-middle">🛠️</div>
+      <div class="timeline-end w-full mb-6"><div class="card card-border bg-base-200"><div class="card-body py-4">
+        <h3 class="card-title text-base">Phase 6 — Tools &amp; interaction polish</h3>
+        <p class="text-sm">W/L mouse mapping + presets 1–9; hotkey system; clip box with gizmo handles (in-shader); transfer-function editor (control points → 256×1 RGBA LUT); PNG export via FBO; metadata panel + PHI notice; MPR length measurement in mm; invert/flip; reset view (demand-mode transition: <code>invalidate()</code> then rAF before animating).</p>
+        <p class="text-xs"><b>Accept:</b> per-tool e2e; measurement of the phantom’s known 40 mm rod reads 40 ± 0.5 mm on an oblique fixture; exported PNG non-blank at fixed resolution; a11y: keyboard-only session can load, scrub, adjust W/L.</p>
+        <p class="text-xs opacity-70"><b>Ultracode:</b> parallel per-tool implementers (worktree isolation); UX-consistency review pass.</p>
+      </div></div></div>
+    </li>
+
+    <li>
+      <div class="timeline-middle">🚀</div>
+      <div class="timeline-end w-full mb-6"><div class="card card-border bg-base-200"><div class="card-body py-4">
+        <h3 class="card-title text-base">Phase 7 — Hardening &amp; release v0.1.0</h3>
+        <p class="text-sm">Performance budget enforcement (marks + meter); oversized-volume downsample/quantize path in workers; context-loss recovery; optional progressive texSubImage3D streaming (D4 upgrade); accessibility audit; THIRD_PARTY_NOTICES generation; ARCHITECTURE.md + COORDINATES.md; zero-network suite finalized; GitHub release with dist.zip + checksums.</p>
+        <p class="text-xs"><b>Accept:</b> all budgets met on reference hardware; simulated context loss recovers without reload; full CI matrix green; release artifact serves via <code>npx serve</code> from a fresh machine with zero external requests.</p>
+        <p class="text-xs opacity-70"><b>Ultracode:</b> completeness-critic sweep against this plan; multi-lens final review (security/privacy, perf, correctness, docs).</p>
+      </div></div></div>
+    </li>
+  </ul>
+</section>
+
+<!-- ===================== RISKS ===================== -->
+<section id="risks" class="space-y-4">
+  <h2 class="text-2xl font-bold border-b border-base-300 pb-2">12 · Top risks &amp; mitigations</h2>
+  <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-200">
+    <table class="table table-sm table-zebra">
+      <thead><tr><th>Risk</th><th>Severity</th><th>Mitigation (already in plan)</th></tr></thead>
+      <tbody>
+        <tr><td><b>Silent anatomical mirroring / axis flip</b> — renders plausibly, passes eyeball tests</td><td><span class="badge badge-error badge-sm">critical</span></td><td>Normative §6; asymmetric phantom octant e2e; itk-wasm oracle agreement; mandatory orientation labels on every pane.</td></tr>
+        <tr><td>Renderer complexity underestimated (MPR + clipping + jitter + color management from scratch)</td><td><span class="badge badge-error badge-sm">high</span></td><td>MIP-first sequencing; MIT/BSD reference code enumerated; <code>flat linear</code> + LUT readback test kills the tone-mapping trap early.</td></tr>
+        <tr><td>Real-world exports fail (compressed classic, Philips/Siemens-XA Enhanced)</td><td><span class="badge badge-warning badge-sm">high</span></td><td>Codec matrix + lossy policy (D8); Enhanced detect-then-support (D7); fixture-per-syntax with checksum equivalence.</td></tr>
+        <tr><td>Memory blowup / WebGL context hard-crash on large studies</td><td><span class="badge badge-warning badge-sm">high</span></td><td>Texture budget gate + R8/downsample fallback; transfer/release discipline; context-loss recovery; heap budget in CI-adjacent checks.</td></tr>
+        <tr><td>Dependency-version fragility (react &lt;19.3 pin, fiber/drei/three matrix)</td><td><span class="badge badge-warning badge-sm">medium</span></td><td>Exact pins + committed lockfile; CI runs <code>npm ci</code>; renovate disabled for the pinned cluster.</td></tr>
+        <tr><td>License contamination from reference repos</td><td><span class="badge badge-warning badge-sm">medium</span></td><td>Read-only list: SuboptimalEng/volume-rendering (CC BY-NC-SA), RolandR/VolumeRayCasting (AGPL). Copy-safe: three.js examples (MIT), Will Usher’s raycaster (MIT), NiiVue shaders (BSD-2), Donitzo renderer (MIT). Attribution comments where ideas are ported.</td></tr>
+        <tr><td>Accidental network dependence (codec/oracle WASM default to CDNs)</td><td><span class="badge badge-warning badge-sm">medium</span></td><td>Self-host all WASM; three-layer enforcement (§9) fails CI on regression.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ===================== PITFALLS ===================== -->
+<section id="pitfalls" class="space-y-4">
+  <h2 class="text-2xl font-bold border-b border-base-300 pb-2">13 · Pitfall checklist (pre-commit review lens for the implementing agent)</h2>
+  <div class="grid md:grid-cols-2 gap-4 text-sm">
+    <div class="card card-border bg-base-200"><div class="card-body py-4">
+      <h3 class="card-title text-base">DICOM</h3>
+      <ul class="list-disc ml-5 space-y-1">
+        <li>☐ Sort = dot(row×col, IPP). Never InstanceNumber/SliceLocation/filename.</li>
+        <li>☐ zSpacing from consecutive projected IPP deltas — never SliceThickness; SpacingBetweenSlices is Type-3, sometimes wrong, legally negative.</li>
+        <li>☐ PixelSpacing = row\column (vertical first); backslash-split all multi-valued DS.</li>
+        <li>☐ Sign-extend 12-in-16 signed; mask above HighBit unsigned; MONOCHROME1 invert.</li>
+        <li>☐ Enhanced MR: geometry lives in functional groups, not top-level tags.</li>
+        <li>☐ Implicit VR is the default syntax — never assume explicit. Deflated needs pako pre-parse.</li>
+        <li>☐ Encapsulated frames via readEncapsulatedImageFrame + offset-table helper.</li>
+        <li>☐ HTJ2K UIDs are 1.2.840.10008.1.2.4.201/.202/.203 (upstream README has a typo).</li>
+      </ul>
+    </div></div>
+    <div class="card card-border bg-base-200"><div class="card-body py-4">
+      <h3 class="card-title text-base">WebGL / three.js</h3>
+      <ul class="list-disc ml-5 space-y-1">
+        <li>☐ LinearFilter set explicitly (Data3DTexture defaults to Nearest); unpackAlignment=1; no mipmaps.</li>
+        <li>☐ R16F via toHalfFloat bit patterns; never integer textures; R32F only after checking OES_texture_float_linear.</li>
+        <li>☐ BackSide box; clamp t.x≥0; highp sampler3D.</li>
+        <li>☐ Jittered ray start from day one; MIP never early-exits; premultiplied front-to-back compositing only.</li>
+        <li>☐ Clipping in-shader (t-range), not material.clippingPlanes.</li>
+        <li>☐ Anisotropic scale from real spacing or anatomy squashes.</li>
+      </ul>
+    </div></div>
+    <div class="card card-border bg-base-200"><div class="card-body py-4">
+      <h3 class="card-title text-base">R3F</h3>
+      <ul class="list-disc ml-5 space-y-1">
+        <li>☐ No setState in useFrame/fast pointer events; transient zustand subs; every mutation + invalidate().</li>
+        <li>☐ Mutate matRef.current.uniforms.X.value (v9.6 merge semantics).</li>
+        <li>☐ Dispose uniform-held textures on swap; StrictMode-idempotent creation; assert gl.info.memory.</li>
+        <li>☐ One canvas + View for MPR; frames={1}; eventSource on the container.</li>
+        <li>☐ Canvas flat linear; demand-mode animations start inside rAF after invalidate().</li>
+        <li>☐ Suspense fallback inside Canvas = &lt;Html&gt;, never DOM.</li>
+      </ul>
+    </div></div>
+    <div class="card card-border bg-base-200"><div class="card-body py-4">
+      <h3 class="card-title text-base">Ingest / build / privacy</h3>
+      <ul class="list-disc ml-5 space-y-1">
+        <li>☐ Drop-tick synchronous handle mapping; readEntries 100-batch loop; Firefox callback promisified.</li>
+        <li>☐ Files→workers (lazy), buffers back via transfer list; release per-slice buffers post-assembly.</li>
+        <li>☐ Worker URL literal-inline for Vite; smoke-test workers under base:'./' from a nested path.</li>
+        <li>☐ CSP prod-only; wasm-unsafe-eval + worker-src blob: present; file:// documented as unsupported.</li>
+        <li>☐ No extension filtering; DICM sniff at byte 128; skip DICOMDIR/SC/SR.</li>
+        <li>☐ Never log header values; no OPFS by default.</li>
+      </ul>
+    </div></div>
+  </div>
+</section>
+
+<!-- ===================== EXECUTION ===================== -->
+<section id="execution" class="space-y-4">
+  <h2 class="text-2xl font-bold border-b border-base-300 pb-2">14 · Executing this plan with Claude Code</h2>
+  <div class="card card-border bg-base-200"><div class="card-body text-sm space-y-2">
+    <p><b>Per-phase prompt template:</b> <i>“Implement Phase N of docs/PLAN.html in the MRIViewer repo. Read §PLAN sections referenced by the phase first. Honor every locked decision (§2) and the pitfall checklist (§13). Do not modify pinned versions. Definition of done = the phase’s Accept criteria; run the verification commands and show output. Use ultracode workflows as suggested in the phase card.”</i></p>
+    <p><b>Standing rules for the agent:</b> COORDINATES.md is normative — geometry changes require phantom-test updates in the same commit · new dependencies need a license check (no copyleft) and a self-hosting check (no CDN fetch) · every bug fixed gets a regression fixture · CI must be green before a phase is declared complete.</p>
+    <p><b>Reference material (read, in order, before Phase 3):</b> Will Usher, “Volume Rendering with WebGL” (MIT code) · <code>three/examples/webgl_texture3d.html</code> + <code>addons/shaders/VolumeShader.js</code> (MIT) · NiiVue <code>packages/niivue/src/shader-srcs.ts</code> (BSD-2) · Cornerstone3D PR #1419 (streaming pattern) · OHIF <code>isDisplaySetReconstructable.js</code> (validation tolerances).</p>
+  </div></div>
+</section>
+
+<footer class="text-xs opacity-50 border-t border-base-300 pt-4 pb-10">
+  MRIViewer implementation plan · generated 2026-07-03 from a 13-agent verified research workflow · korallis/MRIViewer · MIT.
+  Design: Lavish-recommended Tailwind v4 + DaisyUI v5 (new repo — no existing design system to match).
+</footer>
+
+</main>
+
+<!-- ===================== CODE SNIPPETS (rendered via @pierre/diffs) ===================== -->
+<script type="text/plain" id="src-sort">// src/dicom/sort.ts — geometric slice ordering (GDCM / nibabel / Clunie algorithm)
+export function sortSlices(slices: SliceMeta[]): SortedVolumeGeometry {
+  const [r0,r1,r2, c0,c1,c2] = slices[0].imageOrientationPatient; // (0020,0037)
+  // slice normal = row × col direction cosines
+  const n = [r1*c2 - r2*c1, r2*c0 - r0*c2, r0*c1 - r1*c0] as const;
+
+  const keyed = slices.map(s => ({
+    s,
+    d: n[0]*s.imagePositionPatient[0]   // project IPP (0020,0032) onto normal
+     + n[1]*s.imagePositionPatient[1]
+     + n[2]*s.imagePositionPatient[2],
+  }));
+  keyed.sort((a, b) => a.d - b.d);
+
+  const deltas = keyed.slice(1).map((k, i) => k.d - keyed[i].d);
+  const zSpacing = median(deltas);      // NEVER SliceThickness / SpacingBetweenSlices
+  const maxDev = Math.max(...deltas.map(d => Math.abs(d - zSpacing) / zSpacing));
+
+  return {
+    ordered: keyed.map(k => k.s),
+    normal: n,
+    zSpacing,
+    spacingWarning: maxDev > 0.02,      // warn >2% median deviation
+    reconstructable: maxDev <= 0.20,    // refuse >20% (OHIF tolerance)
+    duplicatePositions: deltas.some(d => Math.abs(d) < 1e-4), // → split by 4D tags
+  };
+}</script>
+
+<script type="text/plain" id="src-shader">// src/render/shaders/raymarch.frag — core loop (unit-texture space; ideas: Usher MIT / three VolumeShader MIT)
+precision highp float;
+precision highp sampler3D;
+
+uniform sampler3D u_data;        // R16F, normalized [0,1]
+uniform sampler2D u_lut;         // 256x1 RGBA transfer function
+uniform vec2  u_clim;            // window low/high  (== window/level)
+uniform vec3  u_dims;            // voxel dimensions
+uniform vec3  u_clipMin, u_clipMax; // clip box in texture space
+uniform int   u_mode;            // 0=MIP 1=DVR 2=ISO
+uniform float u_isoThreshold, u_quality;
+
+in vec3 v_rayDirUnnorm;
+flat in vec3 v_eyeTex;           // eye position in texture space (from inverse modelMatrix)
+
+vec2 intersectBox(vec3 o, vec3 d, vec3 bmin, vec3 bmax) {
+  vec3 inv = 1.0 / d;
+  vec3 t0 = (bmin - o) * inv, t1 = (bmax - o) * inv;
+  vec3 tmin = min(t0, t1), tmax = max(t0, t1);
+  return vec2(max(max(tmin.x, tmin.y), tmin.z), min(min(tmax.x, tmax.y), tmax.z));
+}
+float ign(vec2 p) {               // interleaved gradient noise — hides banding
+  return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
+}
+
+void main() {
+  vec3 dir = normalize(v_rayDirUnnorm);
+  vec2 t = intersectBox(v_eyeTex, dir, u_clipMin, u_clipMax); // clip box == ray interval
+  if (t.x > t.y) discard;
+  t.x = max(t.x, 0.0);                                        // camera inside volume
+
+  vec3 dtv = 1.0 / (u_dims * abs(dir));
+  float dt = min(dtv.x, min(dtv.y, dtv.z)) / u_quality;       // ~1 voxel/step at quality 1
+  float tt = t.x + dt * ign(gl_FragCoord.xy);                 // jittered start
+
+  vec4 acc = vec4(0.0);
+  float maxVal = 0.0;
+  for (int i = 0; i < 1774; i++) {                            // √3 × 1024 cap
+    if (tt >= t.y) break;
+    float v = texture(u_data, v_eyeTex + tt * dir).r;
+    float w = clamp((v - u_clim.x) / (u_clim.y - u_clim.x), 0.0, 1.0);
+    if (u_mode == 0) { maxVal = max(maxVal, w); }             // MIP: full ray, no early-out
+    else {
+      vec4 c = texture(u_lut, vec2((w * 255.0 + 0.5) / 256.0, 0.5));
+      c.a = 1.0 - pow(1.0 - c.a, u_quality);                  // opacity correction for step size
+      acc.rgb += (1.0 - acc.a) * c.a * c.rgb;                 // premultiplied front-to-back
+      acc.a   += (1.0 - acc.a) * c.a;
+      if (acc.a >= 0.95) break;                               // early termination (DVR/ISO only)
+    }
+    tt += dt;
+  }
+  // (ISO mode: threshold pre-test, half-step-back refinement, 6-sample central-difference
+  //  gradient at hit, Blinn-Phong with normal flipped toward viewer — omitted for brevity)
+  gl_FragColor = (u_mode == 0)
+    ? texture(u_lut, vec2((maxVal * 255.0 + 0.5) / 256.0, 0.5))
+    : acc;
+  if (gl_FragColor.a < 0.05) discard;
+}</script>
+
+<script type="text/plain" id="src-material">// src/render/VolumeMaterial.ts — R3F wiring (drei shaderMaterial + fiber ≥9.6 uniform contract)
+const VolumeMaterial = shaderMaterial(
+  { u_data: null, u_lut: null, u_clim: new THREE.Vector2(0, 1), u_dims: new THREE.Vector3(),
+    u_clipMin: new THREE.Vector3(0,0,0), u_clipMax: new THREE.Vector3(1,1,1),
+    u_mode: 1, u_isoThreshold: 0.5, u_quality: 1.0 },
+  vertGLSL, fragGLSL,
+);
+extend({ VolumeMaterial });
+
+function VolumeMesh({ seriesKey }: { seriesKey: string }) {
+  const volume = suspend(() => parseAndAssemble(seriesKey), [seriesKey]);
+  const matRef = useRef<any>(null);
+  const invalidate = useThree(s => s.invalidate);
+
+  useEffect(() => {
+    const tex = makeVolumeTexture(volume);            // R16F Data3DTexture, LinearFilter
+    matRef.current.uniforms.u_data.value = tex;
+    invalidate();
+    return () => tex.dispose();                       // uniform-held textures are invisible
+  }, [volume, invalidate]);                           //   to R3F auto-dispose — leak otherwise
+
+  useEffect(() => useStore.subscribe(                 // transient sub: no React re-render
+    s => s.windowClim,
+    clim => { matRef.current.uniforms.u_clim.value.set(clim[0], clim[1]); invalidate(); },
+  ), [invalidate]);
+
+  return (
+    <mesh matrixAutoUpdate={false} matrix={volume.worldMatrix /* worldFromLPS·lpsFromVoxel·unitScale */}>
+      <boxGeometry args={[1, 1, 1]} />
+      <volumeMaterial key={(VolumeMaterial as any).key} ref={matRef}
+        side={THREE.BackSide} transparent depthWrite={false}
+        u_dims={volume.dims} />
+    </mesh>
+  );
+}</script>
+
+<script type="text/plain" id="src-csp">// vite.config.ts — production-only strict CSP (dev needs the HMR websocket)
+const csp = [
+  "default-src 'none'",
+  "script-src 'self' 'wasm-unsafe-eval'",   // wasm-unsafe-eval: codec WASM instantiation
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' blob: data:",
+  "worker-src 'self' blob:",                 // bundlers may load workers from blob:
+  "connect-src 'self'",                      // own chunks only; every external origin blocked
+  "font-src 'self'", "base-uri 'none'", "form-action 'none'", "object-src 'none'",
+].join('; ');
+
+export default defineConfig({
+  base: './',                                // dist/ is servable from any sub-path
+  worker: { format: 'es' },
+  plugins: [react(), {
+    name: 'strict-csp', apply: 'build',
+    transformIndexHtml: (html) => ({ html, tags: [{
+      tag: 'meta', injectTo: 'head-prepend',
+      attrs: { 'http-equiv': 'Content-Security-Policy', content: csp },
+    }]}),
+  }],
+});</script>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "dark", securityLevel: "strict" });
+</script>
+<script type="module">
+  import { File } from "https://esm.sh/@pierre/diffs@1.2.10?bundle";
+  const theme = { light: "github-light", dark: "github-dark" };
+  const render = (elId, name, srcId) => {
+    const el = document.querySelector(elId);
+    const contents = document.getElementById(srcId)?.textContent ?? "";
+    if (el && contents) new File({ theme, themeType: "dark", overflow: "wrap" })
+      .render({ containerWrapper: el, file: { name, contents } });
+  };
+  render("#code-sort", "src/dicom/sort.ts", "src-sort");
+  render("#code-shader", "src/render/shaders/raymarch.frag", "src-shader");
+  render("#code-material", "src/render/VolumeMaterial.tsx", "src-material");
+  render("#code-csp", "vite.config.ts", "src-csp");
+</script>
+
+</body>
+</html>
