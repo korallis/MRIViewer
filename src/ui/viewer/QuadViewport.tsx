@@ -10,6 +10,7 @@ import { getLutTexture, type ColormapName } from '../../render/luts';
 import { makeVolumeTexture } from '../../volume/texture';
 import { meshMatrix, volumeFrame } from '../../volume/matrices';
 import { paneLayout, type PaneKind, type PaneLayout } from './SlicePane';
+import { applyWindowLevelDrag } from './windowing';
 import { getVolume } from '../../state/resources';
 import { useViewer } from '../../state/store';
 
@@ -43,7 +44,7 @@ export function QuadViewport({ needsReadback }: { needsReadback: boolean }) {
         gl={{
           antialias: false,
           powerPreference: 'high-performance',
-          preserveDrawingBuffer: needsReadback,
+          preserveDrawingBuffer: true, // reliable PNG export + e2e pixel probes
         }}
         dpr={[1, 2]}
         style={{ position: 'absolute', inset: 0 }}
@@ -256,6 +257,25 @@ function QuadScene() {
     invalidate();
   }, [built, viewResetNonce, invalidate]);
 
+  // PNG export: force a fresh frame, then download the (preserved) buffer.
+  const captureNonce = useViewer((s) => s.captureNonce);
+  useEffect(() => {
+    if (!built || captureNonce === 0) return;
+    invalidate();
+    const id = requestAnimationFrame(() => {
+      gl.domElement.toBlob((blob) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'mriviewer.png';
+        a.click();
+        URL.revokeObjectURL(url);
+      }, 'image/png');
+    });
+    return () => cancelAnimationFrame(id);
+  }, [captureNonce, built, gl, invalidate]);
+
   // Manual multi-viewport render.
   useFrame(() => {
     if (!built) return;
@@ -415,6 +435,34 @@ function containFrac(vpW: number, vpH: number, physW: number, physH: number) {
   return { hw, hh };
 }
 
+/** Shared right-drag → window/level. Returns handlers to spread onto a pane. */
+function useWindowLevelDrag() {
+  const wl = useRef<{ x: number; y: number } | null>(null);
+  return {
+    onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+    down: (e: React.PointerEvent): boolean => {
+      if (e.button !== 2) return false;
+      wl.current = { x: e.clientX, y: e.clientY };
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      return true;
+    },
+    move: (e: React.PointerEvent): boolean => {
+      if (!wl.current) return false;
+      const dx = e.clientX - wl.current.x;
+      const dy = e.clientY - wl.current.y;
+      wl.current = { x: e.clientX, y: e.clientY };
+      applyWindowLevelDrag(dx, dy);
+      requestRedraw();
+      return true;
+    },
+    up: () => {
+      const was = wl.current !== null;
+      wl.current = null;
+      return was;
+    },
+  };
+}
+
 function MprOverlay({
   pane,
   layout,
@@ -426,6 +474,7 @@ function MprOverlay({
 }) {
   const ref = useRef<HTMLDivElement>(null!);
   const dragging = useRef(false);
+  const wl = useWindowLevelDrag();
   const dim = layout.dims[layout.axes.sliceAxis]!;
   const sliceIndex = Math.round(crosshairTex[layout.axes.sliceAxis]! * (dim - 1));
 
@@ -480,14 +529,22 @@ function MprOverlay({
       ref={ref}
       data-testid={`pane-${pane}`}
       style={{ position: 'relative', pointerEvents: 'auto', cursor: 'crosshair', overflow: 'hidden' }}
+      onContextMenu={wl.onContextMenu}
       onPointerDown={(e) => {
+        if (wl.down(e)) return;
         if (e.button !== 0) return;
         dragging.current = true;
         (e.target as HTMLElement).setPointerCapture(e.pointerId);
         setCrosshair(e.clientX, e.clientY);
       }}
-      onPointerMove={(e) => dragging.current && setCrosshair(e.clientX, e.clientY)}
-      onPointerUp={() => (dragging.current = false)}
+      onPointerMove={(e) => {
+        if (wl.move(e)) return;
+        if (dragging.current) setCrosshair(e.clientX, e.clientY);
+      }}
+      onPointerUp={() => {
+        wl.up();
+        dragging.current = false;
+      }}
     >
       <Label text={`${pane.toUpperCase()} · ${sliceIndex + 1}/${dim}`} />
       <Edge pos="left" text={layout.axes.labels[0]} />
@@ -503,6 +560,7 @@ function MprOverlay({
 function ThreeDOverlay() {
   const ref = useRef<HTMLDivElement>(null!);
   const dragging = useRef<{ x: number; y: number } | null>(null);
+  const wl = useWindowLevelDrag();
 
   const orbitOf = () =>
     (window as unknown as { __mriOrbit?: { current: OrbitState } }).__mriOrbit?.current;
@@ -525,11 +583,14 @@ function ThreeDOverlay() {
       ref={ref}
       data-testid="pane-3d"
       style={{ position: 'relative', pointerEvents: 'auto', cursor: 'grab', overflow: 'hidden' }}
+      onContextMenu={wl.onContextMenu}
       onPointerDown={(e) => {
+        if (wl.down(e)) return;
         dragging.current = { x: e.clientX, y: e.clientY };
         (e.target as HTMLElement).setPointerCapture(e.pointerId);
       }}
       onPointerMove={(e) => {
+        if (wl.move(e)) return;
         if (!dragging.current) return;
         const o = orbitOf();
         if (!o) return;
@@ -540,7 +601,10 @@ function ThreeDOverlay() {
         o.polar = Math.min(Math.PI - 0.05, Math.max(0.05, o.polar - dy * 0.01));
         requestRedraw();
       }}
-      onPointerUp={() => (dragging.current = null)}
+      onPointerUp={() => {
+        wl.up();
+        dragging.current = null;
+      }}
     >
       <Label text="3D" />
     </div>

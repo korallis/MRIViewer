@@ -48,6 +48,9 @@ interface ViewerState {
   invert: boolean;
   slabHalf: number;
   viewResetNonce: number;
+  metadataOpen: boolean;
+  clipOpen: boolean;
+  captureNonce: number;
   errors: string[];
   announce: string;
   set: (partial: Partial<ViewerState>) => void;
@@ -75,6 +78,9 @@ export const useViewer = create<ViewerState>()(
     invert: false,
     slabHalf: 0,
     viewResetNonce: 0,
+    metadataOpen: false,
+    clipOpen: false,
+    captureNonce: 0,
     errors: [],
     announce: '',
     set: (partial) => set(partial),

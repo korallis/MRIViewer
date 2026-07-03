@@ -142,6 +142,23 @@ export function Toolbar() {
       >
         ortho
       </button>
+      <button
+        className={useViewer.getState().clipOpen ? 'active' : ''}
+        title="Clip box"
+        onClick={() => set({ clipOpen: !useViewer.getState().clipOpen })}
+      >
+        clip
+      </button>
+      <button title="Export PNG" onClick={() => set({ captureNonce: useViewer.getState().captureNonce + 1 })}>
+        📷 PNG
+      </button>
+      <button
+        className={useViewer.getState().metadataOpen ? 'active' : ''}
+        title="Study metadata"
+        onClick={() => set({ metadataOpen: !useViewer.getState().metadataOpen })}
+      >
+        info
+      </button>
       <button title="Reset 3D view (space)" onClick={() => set({ viewResetNonce: useViewer.getState().viewResetNonce + 1 })}>
         reset view
       </button>
