@@ -61,6 +61,7 @@ interface ViewerState {
   cameraCmd: { kind: CameraKind; nonce: number };
   toast: string;
   toastNonce: number;
+  aiEnabled: boolean;
   errors: string[];
   announce: string;
   set: (partial: Partial<ViewerState>) => void;
@@ -100,6 +101,9 @@ export const useViewer = create<ViewerState>()(
     cameraCmd: { kind: 'reset', nonce: 0 },
     toast: '',
     toastNonce: 0,
+    // AI is OFF by default so a freshly-cloned repo stays fully local (opt-in).
+    aiEnabled:
+      typeof localStorage !== 'undefined' && localStorage.getItem('mriviewer.aiEnabled') === '1',
     errors: [],
     announce: '',
     set: (partial) => set(partial),

@@ -3,8 +3,8 @@ import { getVolume } from '../../state/resources';
 
 export function TopBar() {
   const stage = useViewer((s) => s.stage);
+  const aiEnabled = useViewer((s) => s.aiEnabled);
   const set = useViewer((s) => s.set);
-  const localOnly = true; // no LLM wired yet → fully local
   return (
     <header className="topbar">
       <div className="brand">
@@ -15,9 +15,9 @@ export function TopBar() {
         </div>
       </div>
       <div className="top-actions">
-        <span className="pill">
-          <span className={`status-dot ${localOnly ? '' : 'warn'}`} />
-          {localOnly ? 'Local only · no uploads' : 'LLM connected'}
+        <span className="pill" title={aiEnabled ? 'AI companion on — only de-identified context leaves this machine' : 'Fully local — imaging data never leaves this machine'}>
+          <span className={`status-dot ${aiEnabled ? 'warn' : ''}`} />
+          {aiEnabled ? 'AI on · de-identified only' : 'Local only · no uploads'}
         </span>
         {stage === 'viewing' && (
           <span className="pill" id="render-pill">

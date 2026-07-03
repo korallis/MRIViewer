@@ -46,7 +46,11 @@ npm run preview      # or: npx serve dist
 
 ## Privacy
 
-The production build makes **zero network requests** — enforced three ways: a build-time grep of `dist/` for external URLs, a strict runtime CSP (`connect-src 'self'`), and a Playwright test that aborts any non-local request during a full load+render. DICOM headers can contain PHI; nothing is logged or persisted.
+The viewer makes **zero network requests** by default — enforced three ways: a build-time check that `index.html` loads no external resources, a strict runtime CSP (`connect-src 'self'`), and a Playwright test that aborts any non-local request during a full load+render. DICOM headers can contain PHI; nothing is logged or persisted.
+
+## AI companion (optional, off by default)
+
+An optional evidence companion can send a study's **de-identified technical context** (modality, sequence, geometry — never patient identifiers or pixel data) to an LLM for contextual analysis. It is **off by default**; enabling it is a two-step opt-in (configure a key + toggle it on). Even when enabled, the browser makes no external request — the call runs in a local server-side proxy. See [docs/AI.md](docs/AI.md).
 
 ## Development
 

@@ -142,3 +142,6 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
 mriviewer-*-dist.zip
+
+.env
+.env.local

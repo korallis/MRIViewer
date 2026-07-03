@@ -1,6 +1,7 @@
 import { useViewer } from '../../state/store';
 import { getVolume } from '../../state/resources';
 import { sliceAxisFor } from '../../volume/sample';
+import { AiCompanion } from './AiCompanion';
 
 export function CompanionPanel() {
   const orientation = useViewer((s) => s.orientation);
@@ -69,18 +70,12 @@ export function CompanionPanel() {
           </div>
         )}
 
-        <div className="finding" style={{ marginTop: 12 }}>
-          <h3>AI analysis <span className="confidence next">next</span></h3>
-          <p>
-            The evidence companion (findings, chronology tie-in, report extraction) attaches here.
-            It will run through the LegalOS AI lane with de-identified inputs — not yet wired in this build.
-          </p>
-        </div>
+        <AiCompanion />
 
         <div className="timeline">
           <div className="timeline-item"><strong>1 · Ingest</strong>DICOM folder → parse, validate geometry, reconstruct volume (done).</div>
           <div className="timeline-item"><strong>2 · View</strong>3D volume, orthogonal slices, orientation, window/level, export (done).</div>
-          <div className="timeline-item"><strong>3 · Reason</strong>De-identify → AI findings, chronology, issue tagging (next).</div>
+          <div className="timeline-item"><strong>3 · Reason</strong>De-identify → AI contextual analysis via the LegalOS lane (opt-in, above).</div>
           <div className="timeline-item"><strong>4 · Draft</strong>Medical chronology, damages narrative, disclosure bundle (next).</div>
         </div>
 

@@ -1,5 +1,6 @@
 import { defineConfig, type PluginOption } from 'vite';
 import react from '@vitejs/plugin-react';
+import { aiProxyPlugin } from './src/server/aiProxy';
 
 // Production-only strict CSP: blocks every external origin at runtime.
 // Not applied in dev — the HMR websocket needs looser rules (PLAN §9).
@@ -35,7 +36,7 @@ const strictCsp: PluginOption = {
 
 export default defineConfig({
   base: './',
-  plugins: [react(), strictCsp],
+  plugins: [react(), strictCsp, aiProxyPlugin()],
   worker: { format: 'es' },
   build: { target: 'es2022', chunkSizeWarningLimit: 1500 },
 });
