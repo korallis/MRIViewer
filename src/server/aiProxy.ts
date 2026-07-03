@@ -1,5 +1,14 @@
-import type { Plugin, Connect } from 'vite';
+import { loadEnv, type Plugin, type Connect } from 'vite';
 import type { ServerResponse } from 'node:http';
+
+interface AiEnv {
+  apiKey: string;
+  base: string;
+  model: string;
+}
+// Populated from Vite's loadEnv (reads .env / .env.local) at config time, with
+// a process.env fallback. Vite does NOT auto-populate process.env for plugins.
+let aiEnv: AiEnv = { apiKey: '', base: 'https://ai-gateway.vercel.sh/v1', model: 'anthropic/claude-opus-4.8' };
 
 /**
  * Optional AI companion proxy (dev + preview only).
@@ -38,7 +47,7 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 }
 
 async function handle(req: Connect.IncomingMessage, res: ServerResponse): Promise<void> {
-  const apiKey = process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_OIDC_TOKEN ?? '';
+  const apiKey = aiEnv.apiKey || process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN || '';
   if (!apiKey) {
     return json(res, 503, {
       error: 'AI not configured',
@@ -57,8 +66,8 @@ async function handle(req: Connect.IncomingMessage, res: ServerResponse): Promis
   try {
     const { streamText } = await import('ai');
     const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible');
-    const base = (process.env.AI_GATEWAY_BASE ?? 'https://ai-gateway.vercel.sh/v1').replace(/\/$/, '');
-    const model = process.env.MRIVIEWER_AI_MODEL ?? 'anthropic/claude-opus-4.8';
+    const base = (aiEnv.base || 'https://ai-gateway.vercel.sh/v1').replace(/\/$/, '');
+    const model = aiEnv.model || 'anthropic/claude-opus-4.8';
     const gateway = createOpenAICompatible({ name: 'vercel-ai-gateway', baseURL: base, apiKey });
 
     const system = payload.context
@@ -104,6 +113,15 @@ function middleware(): Connect.NextHandleFunction {
 export function aiProxyPlugin(): Plugin {
   return {
     name: 'mriviewer-ai-proxy',
+    configResolved(config) {
+      // '' prefix loads ALL vars (incl. non-VITE_) from .env / .env.local.
+      const env = loadEnv(config.mode, config.root, '');
+      aiEnv = {
+        apiKey: env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN || '',
+        base: env.AI_GATEWAY_BASE || 'https://ai-gateway.vercel.sh/v1',
+        model: env.MRIVIEWER_AI_MODEL || 'anthropic/claude-opus-4.8',
+      };
+    },
     configureServer(server) {
       server.middlewares.use(middleware());
     },
