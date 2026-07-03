@@ -65,10 +65,11 @@ let codecModule: DicomCodecModule | null = null;
 async function loadWasmCodec(): Promise<DicomCodecModule | null> {
   if (codecModule) return codecModule;
   try {
-    // Optional dependency; dynamic import keeps it out of the main chunk.
-    const mod = (await import(
-      /* @vite-ignore */ '@cornerstonejs/dicom-codec'
-    )) as unknown as DicomCodecModule;
+    // Optional dependency. The specifier is assembled at runtime so Vite's
+    // import-analysis does not try to resolve a package that isn't installed
+    // (a static string errors the dev server even with @vite-ignore).
+    const pkg = ['@cornerstonejs', 'dicom-codec'].join('/');
+    const mod = (await import(/* @vite-ignore */ pkg)) as unknown as DicomCodecModule;
     codecModule = mod;
     wasmProbe = 'available';
     return mod;
