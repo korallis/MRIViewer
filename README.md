@@ -1,8 +1,8 @@
 # MRIViewer
 
-Open-source, **local-only** web app for viewing MRI DICOM studies as fully interactive 3D volume renders.
+Open-source, **local-only** web app for viewing MRI DICOM studies as interactive orthogonal slice stacks with an optional 3D volume renderer.
 
-Drop a folder of DICOM files onto the app and explore the study as a GPU-raymarched 3D volume — rotate, clip, adjust window/level and colormaps, and scrub linked axial/sagittal/coronal (MPR) slice views.
+Drop a folder of DICOM files onto the app and explore the study as linked axial/sagittal/coronal MRI slices. Scrub or play cine through the stack in the large viewport, adjust window/level and colormaps, then switch to the optional 3D DVR/MIP/ISO render mode when you want a volume overview.
 
 Built with **React Three Fiber** on WebGL2. No server, no uploads, no telemetry: everything runs in your browser on `localhost`, and your imaging data never leaves your machine.
 
@@ -10,7 +10,13 @@ Built with **React Three Fiber** on WebGL2. No server, no uploads, no telemetry:
 
 ## Screenshots
 
-Multi-planar reconstruction quad (three linked slice views + 3D) with DVR, MIP, and shaded iso-surface render modes, plus grayscale / viridis / hot-iron colormaps.
+The default view is now slice-first: a large interactive MRI plane with linked orthogonal thumbnails, shared crosshair, and cine playback. The real JPEG 2000 screenshot below has visible patient identifiers redacted.
+
+![Slice-first JPEG 2000 MRI viewer with redacted patient metadata](docs/screenshots/jpeg2000-slice-viewer-redacted.png)
+
+The 3D renderer is still available as a secondary mode for DVR, MIP, and iso-surface exploration.
+
+![Optional 3D MIP mode using the synthetic phantom fixture](docs/screenshots/volume-mode-mip.png)
 
 ## Quick start
 
@@ -35,14 +41,14 @@ npm run preview      # or: npx serve dist
 ## Features
 
 - **Ingest** — drag-and-drop or folder picker; hundreds of files; multiple studies/series with a thumbnail browser. Files identified by content (`DICM` magic), not extension.
-- **Formats** — Implicit/Explicit VR, Deflated, RLE Lossless, and Enhanced (multi-frame) MR. JPEG/JPEG2000/JPEG-LS/HTJ2K are wired behind an optional WASM codec (see [docs/CODECS.md](docs/CODECS.md)).
-- **3D** — raymarched DVR, MIP, and Blinn-Phong shaded iso-surface; perspective/orthographic; axis-aligned clip box; orientation gizmo.
-- **MPR** — axial / sagittal / coronal panes from one shared 3D texture, linked crosshairs, wheel scrub, thick-slab MIP, A/P/L/R/S/I edge labels, radiological/neurological toggle.
-- **Tools** — window/level (right-drag; `1`–`9` percentile presets), colormaps, invert, PNG export, metadata panel, keyboard shortcuts.
+- **Formats** — Implicit/Explicit VR, Deflated, RLE Lossless, Enhanced (multi-frame) MR, and JPEG-family transfer syntaxes including JPEG 2000 via local WASM codecs (see [docs/CODECS.md](docs/CODECS.md)).
+- **Slices first** — large axial / sagittal / coronal plane, linked crosshair, wheel scrub, cine playback, A/P/L/R/S/I edge labels, and live orthogonal thumbnails.
+- **3D on demand** — raymarched DVR, MIP, and Blinn-Phong shaded iso-surface; orientation gizmo and preset camera views.
+- **Tools** — window/level contrast, colormaps, invert, PNG export, metadata panel, and privacy-preserving optional AI companion.
 
 ### Keyboard shortcuts
 
-`m` MIP · `d` DVR · `s` ISO · `i` invert · `1`–`9` W/L presets · `↑`/`↓` scrub · `space` reset view. Right-drag = window/level.
+The UI controls expose the current slice, cine playback, orientation, contrast, colormap, invert, export, and optional 3D render modes.
 
 ## Privacy
 
