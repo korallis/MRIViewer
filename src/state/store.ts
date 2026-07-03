@@ -46,6 +46,8 @@ interface ViewerState {
   crosshairTex: Vec3;
   convention: 'radiological' | 'neurological';
   invert: boolean;
+  slabHalf: number;
+  viewResetNonce: number;
   errors: string[];
   announce: string;
   set: (partial: Partial<ViewerState>) => void;
@@ -71,6 +73,8 @@ export const useViewer = create<ViewerState>()(
     crosshairTex: [0.5, 0.5, 0.5],
     convention: 'radiological',
     invert: false,
+    slabHalf: 0,
+    viewResetNonce: 0,
     errors: [],
     announce: '',
     set: (partial) => set(partial),
